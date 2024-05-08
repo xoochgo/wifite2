@@ -77,6 +77,8 @@ Install dependencies
 Either, do it the proper python way with
 
 ```sh
+$ python3 -m venv venv
+$ source venv/bin/activate
 $ pip3 install -r requirements.txt
 ```
 
