@@ -1,4 +1,4 @@
-FROM python:3.13.0b1-slim
+FROM python:3.13.0b2-slim
 
 ENV DEBIAN_FRONTEND noninteractive
 ENV HASHCAT_VERSION hashcat-6.2.6
