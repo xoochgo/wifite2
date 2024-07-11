@@ -32,3 +32,4 @@ Module.symvers
 *.pcap
 *.cap
 cracked.json
+venv/
