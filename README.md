@@ -85,8 +85,6 @@ $ pip3 install -r requirements.txt
 Run Wifite
 ----------
 ```sh
-$ git clone https://github.com/kimocoder/wifite2.git
-$ cd wifite2
 $ sudo ./wifite.py
 ```
 
