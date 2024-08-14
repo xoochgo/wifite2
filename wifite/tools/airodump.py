@@ -102,7 +102,7 @@ class Airodump(Dependency):
         self.pid = Process(command, devnull=True)
         return self
 
-    def __exit__(self, type, value, traceback):
+    def __exit__(self, type2, value, traceback):
         """
         Tearing things down since the context is being exited.
         Called after 'with Airodump(...)' goes out of scope.
@@ -213,7 +213,7 @@ class Airodump(Dependency):
     @staticmethod
     def get_targets_from_csv(csv_filename):
         """Returns list of Target objects parsed from CSV file."""
-        targets = []
+        targets2 = []
         import chardet
         import csv
 
@@ -261,7 +261,7 @@ class Airodump(Dependency):
                         continue
 
                     # Add this client to the appropriate Target
-                    for t in targets:
+                    for t in targets2:
                         if t.bssid == client.bssid:
                             t.clients.append(client)
                             break
@@ -269,35 +269,36 @@ class Airodump(Dependency):
                 else:
                     # The current row corresponds to a 'Target' (router)
                     try:
-                        target = Target(row)
-                        targets.append(target)
-                    except Exception:
-                        continue
+                        target4 = Target(row)
+                        targets2.append(target4)
+                    except Exception as e:
+                        print(f"Error parsing target: {e}")
+                continue
 
-        return targets
+        return targets2
 
     @staticmethod
-    def filter_targets(targets, skip_wps=False):
+    def filter_targets(targets5, skip_wps=False):
         """ Filters targets based on Configuration """
         result = []
         # Filter based on Encryption
-        for target in targets:
+        for target2 in targets5:
             # Filter targets if --power
             # TODO Filter a target based on the current power - not on the max power
             # as soon as losing targets in a single scan does not cause excessive output
-            if Configuration.min_power > 0 and target.max_power < Configuration.min_power:
+            if Configuration.min_power > 0 and target2.max_power < Configuration.min_power:
                 continue
 
-            if Configuration.clients_only and len(target.clients) == 0:
+            if Configuration.clients_only and len(target2.clients) == 0:
                 continue
-            if 'WEP' in Configuration.encryption_filter and 'WEP' in target.encryption:
-                result.append(target)
-            elif 'WPA' in Configuration.encryption_filter and 'WPA' in target.encryption:
-                result.append(target)
-            elif 'WPS' in Configuration.encryption_filter and target.wps in [WPSState.UNLOCKED, WPSState.LOCKED]:
-                result.append(target)
+            if 'WEP' in Configuration.encryption_filter and 'WEP' in target2.encryption:
+                result.append(target2)
+            elif 'WPA' in Configuration.encryption_filter and 'WPA' in target2.encryption:
+                result.append(target2)
+            elif 'WPS' in Configuration.encryption_filter and target2.wps in [WPSState.UNLOCKED, WPSState.LOCKED]:
+                result.append(target2)
             elif skip_wps:
-                result.append(target)
+                result.append(target2)
 
         # Filter based on BSSID/ESSID
         bssid = Configuration.target_bssid
@@ -340,29 +341,29 @@ class Airodump(Dependency):
             '--ignore-negative-one'
         ]
 
-        for target in self.targets:
-            if target.essid_known:
+        for target3 in self.targets:
+            if target3.essid_known:
                 continue
 
             now = int(time.time())
-            secs_since_decloak = now - self.decloaked_times.get(target.bssid, 0)
+            secs_since_decloak = now - self.decloaked_times.get(target3.bssid, 0)
 
             if secs_since_decloak < 30:
                 continue  # Decloak every AP once every 30 seconds
 
             self.decloaking = True
-            self.decloaked_times[target.bssid] = now
+            self.decloaked_times[target3.bssid] = now
             if Configuration.verbose > 1:
                 from ..util.color import Color
-                Color.pe('{C} [?] Deauthing %s (broadcast & %d clients){W}' % (target.bssid, len(target.clients)))
+                Color.pe('{C} [?] Deauthing %s (broadcast & %d clients){W}' % (target3.bssid, len(target3.clients)))
 
             # Deauth broadcast
             iface = Configuration.interface
-            Process(deauth_cmd + ['-a', target.bssid, iface])
+            Process(deauth_cmd + ['-a', target3.bssid, iface])
 
             # Deauth clients
-            for client in target.clients:
-                Process(deauth_cmd + ['-a', target.bssid, '-c', client.bssid, iface])
+            for client in target3.clients:
+                Process(deauth_cmd + ['-a', target3.bssid, '-c', client.bssid, iface])
 
 
 if __name__ == '__main__':

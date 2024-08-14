@@ -353,4 +353,4 @@ if __name__ == '__main__':
     target = Target(fields)
     wep = AttackWEP(target)
     wep.run()
-    Configuration.exit_gracefully(0)
+    Configuration.exit_gracefully()

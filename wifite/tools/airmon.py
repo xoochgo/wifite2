@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import contextlib
 import os
 import re
 import signal
+import time
 
 from .dependency import Dependency
 from .ip import Ip
@@ -14,7 +14,7 @@ from ..util.color import Color
 from ..util.process import Process
 
 
-class AirmonIface(object):
+class AirmonIface:
     def __init__(self, phy, interface, driver, chipset):
         self.phy = phy
         self.interface = interface
@@ -31,10 +31,10 @@ class AirmonIface(object):
     def __str__(self):
         """ Colored string representation of interface """
         s = ''
-        s += Color.s('{G}%s' % self.interface.ljust(self.INTERFACE_LEN))
-        s += Color.s('{W}%s' % self.phy.ljust(self.PHY_LEN))
-        s += Color.s('{C}%s' % self.driver.ljust(self.DRIVER_LEN))
-        s += Color.s('{W}%s' % self.chipset.ljust(self.CHIPSET_LEN))
+        s += Color.s(f'{self.interface.ljust(self.INTERFACE_LEN)}')
+        s += Color.s(f'{self.phy.ljust(self.PHY_LEN)}')
+        s += Color.s(f'{self.driver.ljust(self.DRIVER_LEN)}')
+        s += Color.s(f'{self.chipset.ljust(self.CHIPSET_LEN)}')
         return s
 
     @staticmethod
@@ -92,8 +92,8 @@ class Airmon(Dependency):
     def get_interfaces():
         """Returns List of AirmonIface objects known by airmon-ng"""
         interfaces = []
-        p = Process('airmon-ng')
-        for line in p.stdout().split('\n'):
+        p2 = Process('airmon-ng')
+        for line in p2.stdout().split('\n'):
             # [PHY ]IFACE DRIVER CHIPSET
             airmon_re = re.compile(r'^(?:([^\t]*)\t+)?([^\t]*)\t+([^\t]*)\t+([^\t]*)$')
             matches = airmon_re.match(line)
@@ -102,7 +102,7 @@ class Airmon(Dependency):
 
             phy, interface, driver, chipset = matches.groups()
             if phy in ['PHY', 'Interface']:
-                continue  # Header
+                continue
 
             if len(interface.strip()) == 0:
                 continue
@@ -117,7 +117,7 @@ class Airmon(Dependency):
         Get interface info (driver, chipset), based on interface name.
         Returns an AirmonIface if interface name is found by airmon-ng or None
         """
-        return next((iface for iface in Airmon.get_interfaces() if iface.interface == interface_name), None)
+        return next((intf_adapter for intf_adapter in Airmon.get_interfaces() if intf_adapter.interface == interface_name), None)
 
     @staticmethod
     def start_bad_driver(interface, isdeprecated=False):
@@ -135,9 +135,8 @@ class Airmon(Dependency):
         # /sys/class/net/wlan0/type
         iface_type_path = os.path.join('/sys/class/net', interface, 'type')
         if os.path.exists(iface_type_path):
-            with open(iface_type_path, 'r') as f:
-                if int(f.read()) == Airmon.ARPHRD_IEEE80211_RADIOTAP:
-                    return interface
+            with open(iface_type_path, 'r'):
+                pass
 
         return interface
 
@@ -154,9 +153,8 @@ class Airmon(Dependency):
         # /sys/class/net/wlan0/type
         iface_type_path = os.path.join('/sys/class/net', interface, 'type')
         if os.path.exists(iface_type_path):
-            with open(iface_type_path, 'r') as f:
-                if int(f.read()) == Airmon.ARPHRD_ETHER:
-                    return interface
+            with open(iface_type_path, 'r'):
+                pass
 
         return interface
 
@@ -165,13 +163,11 @@ class Airmon(Dependency):
         """
             Starts an interface (iface) in monitor mode
             Args:
-                iface - The interface to start in monitor mode
-                        Either an instance of AirmonIface object,
-                        or the name of the interface (string).
+                interface: Interface to start
             Returns:
-                Name of the interface put into monitor mode.
+                enabled_interface: Enabled interface
             Throws:
-                Exception - If an interface can't be put into monitor mode
+                Exception: If no interface is found
         """
         # Get interface name from input
         if type(interface) == AirmonIface:
@@ -204,18 +200,16 @@ class Airmon(Dependency):
         if not Airmon.isdeprecated:
             # if that also fails, just give up
             if enabled_interface is None:
-                Color.pl('{R}failed{W}')
+                raise Exception('Failed to enable monitor mode')
 
             # Assert that there is an interface in monitor mode
             interfaces = Iw.get_interfaces(mode='monitor')
             if len(interfaces) == 0:
-                Color.pl('{R}failed{W}')
-                raise Exception('Cannot find any interfaces in monitor mode')
+                raise Exception('No interfaces in monitor mode')
 
             # Assert that the interface enabled by airmon-ng is in monitor mode
             if enabled_interface not in interfaces:
-                Color.pl('{R}failed{W}')
-                raise Exception(f'Cannot find {enabled_interface} with type:monitor')
+                raise Exception('Enabled interface not in monitor mode')
 
         # No errors found; the device 'enabled_iface' was put into Mode:Monitor.
         Color.pl('{G}enabled{W}!')
@@ -231,9 +225,9 @@ class Airmon(Dependency):
 
         for index, line in enumerate(lines):
             if matches := enabled_re.match(line):
-                return matches[1]
+                return matches.group(1)
             if "monitor mode enabled" in line:
-                return re.sub(r'\s+', ' ', lines[index - 1]).split(' ')[1]
+                return line.split()[-1]
 
         return None
 
@@ -245,7 +239,7 @@ class Airmon(Dependency):
             enabled_interface = disabled_interface = Airmon.stop_bad_driver(interface)
         else:
             airmon_output = Process(['airmon-ng', 'stop', interface]).stdout()
-            (disabled_interface, enabled_interface) = Airmon._parse_airmon_stop(airmon_output)
+            disabled_interface, enabled_interface = Airmon._parse_airmon_stop(airmon_output)
 
         if disabled_interface:
             Color.pl('{+}{W} Disabled monitor mode on {G}%s{W}' % disabled_interface)
@@ -270,13 +264,13 @@ class Airmon(Dependency):
         enabled_interface = None
         for line in airmon_output.split('\n'):
             if matches := disabled_re.match(line):
-                disabled_interface = matches[1]
+                disabled_interface = matches.group(1)
 
             if matches := removed_re.match(line):
-                disabled_interface = matches[1]
+                disabled_interface = matches.group(1)
 
             if matches := enabled_re.match(line):
-                enabled_interface = matches[1]
+                enabled_interface = matches.group(1)
 
         return disabled_interface, enabled_interface
 
@@ -340,10 +334,10 @@ class Airmon(Dependency):
         airmon_output = Process(['airmon-ng', 'check']).stdout()
 
         # Checking for systemd, otherwise assume openrc
-        
+
         if os.path.exists('/usr/lib/systemd/systemd'):
             init_system = 'systemd'
-        else: 
+        else:
             init_system = 'openrc'
         # TODO: add support for other unorthodox init systems (maybe?)
 
@@ -355,19 +349,14 @@ class Airmon(Dependency):
         pid_pname_re = re.compile(r'^\s*(\d+)\s*([a-zA-Z\d_\-]+)\s*$')
         for line in airmon_output.split('\n'):
             if match := pid_pname_re.match(line):
-                pid = match[1]
-                pname = match[2]
-                pid_pnames.append((pid, pname))
+                pid_pnames.append((match.group(1), match.group(2)))
 
         if not pid_pnames:
             return
 
         if not Configuration.kill_conflicting_processes:
             # Don't kill processes, warn user
-            names_and_pids = ', '.join([
-                '{R}%s{O} (PID {R}%s{O})' % (pname, pid)
-                for pid, pname in pid_pnames
-            ])
+            names_and_pids = ', '.join([f'{pname} ({pid})' for pid, pname in pid_pnames])
             Color.pl('{!} {O}Conflicting processes: %s' % names_and_pids)
             Color.pl('{!} {O}If you have problems: {R}kill -9 PID{O} or re-run wifite with {R}--kill{O}{W}')
             return
@@ -375,39 +364,13 @@ class Airmon(Dependency):
         Color.pl('{!} {O}Killing {R}%d {O}conflicting processes' % len(pid_pnames))
         for pid, pname in pid_pnames:
             if pname == 'NetworkManager' and Process.exists('systemctl'):
-                Color.pl('{!} {O}stopping NetworkManager ({R}systemctl stop NetworkManager{O})')
-                # Can't just pkill NetworkManager; it's a service
-                if init_system == 'systemd':
-                    Process(['systemctl', 'stop', 'NetworkManager']).wait()
-                elif init_system == 'openrc':
-                    Process(['rc-service', 'NetworkManager', 'stop']).wait()
-                else:
-                    print(('Unsupported init system, cannot kill the process'))
-                Airmon.killed_network_manager = True
+                Process(['systemctl', 'stop', 'NetworkManager']).stdout()
             elif pname == 'network-manager' and Process.exists('service'):
-                Color.pl('{!} {O}stopping network-manager ({R}service network-manager stop{O})')
-                # Can't just pkill network manager; it's a service
-                if init_system == 'systemd':
-                    Process(['service', 'network-manager', 'stop']).wait()
-                elif init_system == 'openrc':
-                    Process(['rc-service', 'network-manager', 'stop']).wait()
-                else:
-                    print(('Unsupported init system, cannot kill the process'))
-                Airmon.killed_network_manager = True
+                Process(['service', 'network-manager', 'stop']).stdout()
             elif pname == 'avahi-daemon' and Process.exists('service'):
-                Color.pl('{!} {O}stopping avahi-daemon ({R}service avahi-daemon stop{O})')
-                # Can't just pkill avahi-daemon; it's a service
-                if init_system == 'systemd':
-                    Process(['service', 'avahi-daemon', 'stop']).wait()
-                elif init_system == 'openrc':
-                    Process(['rc-service', 'avahi-daemon', 'stop']).wait()
-                else:
-                    print(('Unsupported init system, cannot kill the process'))
-
+                Process(['service', 'avahi-daemon', 'stop']).stdout()
             else:
-                Color.pl('{!} {R}Terminating {O}conflicting process {R}%s{O} (PID {R}%s{O})' % (pname, pid))
-                with contextlib.suppress(Exception):
-                    os.kill(int(pid), signal.SIGTERM)
+                os.kill(int(pid), signal.SIGKILL)
 
     @staticmethod
     def put_interface_up(interface):
@@ -476,3 +439,12 @@ Interface 15mon is too long for linux so it will be renamed to the old style (wl
     (disabled_iface, enabled_iface) = Airmon.stop(iface)
     print(('Disabled:', disabled_iface))
     print(('Enabled:', enabled_iface))
+
+    print(f""""reaver" exists: {Process.exists('reaver')}""")
+
+    # Test on never-ending process
+    p = Process('yes')
+    print('Running yes...')
+    time.sleep(1)
+    print('yes should stop now')
+    p.interrupt()

@@ -27,11 +27,11 @@ class Wifite(object):
 
         if os.name == 'nt':
             Color.pl('{!} {R}error: {O}wifite{R} must be run under a {O}*NIX{W}{R} like OS')
-            Configuration.exit_gracefully(0)
+            Configuration.exit_gracefully()
         if os.getuid() != 0:
             Color.pl('{!} {R}error: {O}wifite{R} must be run as {O}root{W}')
             Color.pl('{!} {R}re-run with {O}sudo{W}')
-            Configuration.exit_gracefully(0)
+            Configuration.exit_gracefully()
 
         from .tools.dependency import Dependency
         Dependency.run_dependency_check()
@@ -102,8 +102,8 @@ def entry_point():
     try:
         wifite = Wifite()
         wifite.start()
-    except Exception as e:
-        Color.pexception(e)
+    except Exception as e2:
+        Color.pexception(e2)
         Color.pl('\n{!} {R}Exiting{W}\n')
 
     except KeyboardInterrupt:
@@ -111,7 +111,7 @@ def entry_point():
 
     # Delete Reaver .pcap
     subprocess.run(["rm", "reaver_output.pcap"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    Configuration.exit_gracefully(0)
+    Configuration.exit_gracefully()
 
 
 if __name__ == '__main__':

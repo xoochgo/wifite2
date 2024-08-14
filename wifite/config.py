@@ -628,7 +628,7 @@ class Configuration(object):
             os.rmdir(cls.temp_dir)
 
     @classmethod
-    def exit_gracefully(cls, code=0):
+    def exit_gracefully(cls):
         """ Deletes temp and exist with the given code """
         code = 0
         cls.delete_temp()

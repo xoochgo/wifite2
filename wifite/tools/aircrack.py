@@ -14,7 +14,7 @@ class Aircrack(Dependency):
     dependency_name = 'aircrack-ng'
     dependency_url = 'https://www.aircrack-ng.org/install.html'
 
-    def __init__(self, ivs_file=None):
+    def __init__(self, ivs_file2=None):
 
         self.cracked_file = os.path.abspath(os.path.join(Configuration.temp(), 'wepkey.txt'))
 
@@ -27,10 +27,10 @@ class Aircrack(Dependency):
             '-a', '1',
             '-l', self.cracked_file,
         ]
-        if type(ivs_file) is str:
-            ivs_file = [ivs_file]
+        if isinstance(ivs_file2, str):
+            ivs_file2 = [ivs_file2]
 
-        command.extend(ivs_file)
+        command.extend(ivs_file2 or [])
 
         self.pid = Process(command, devnull=True)
 
@@ -102,26 +102,25 @@ class Aircrack(Dependency):
         eta_str = 'unknown'
         current_key = ''
         while crack_proc.poll() is None:
-            line = crack_proc.pid.stdout.readline()
-            match_nums = aircrack_nums_re.search(line.decode('utf-8'))
-            match_keys = aircrack_key_re.search(line.decode('utf-8'))
+            line = crack_proc.pid.stdout.readline().decode('utf-8')
+            match_nums = aircrack_nums_re.search(line)
+            match_keys = aircrack_key_re.search(line)
             if match_nums:
-                num_tried = int(match_nums[1])
-                num_total = int(match_nums[2])
-                num_kps = float(match_nums[3])
+                num_tried, num_total, num_kps = int(match_nums[1]), int(match_nums[2]), float(match_nums[3])
                 eta_seconds = (num_total - num_tried) / num_kps
                 eta_str = Timer.secs_to_str(eta_seconds)
-                percent = 100.0 * float(num_tried) / float(num_total)
+                percent = 100.0 * num_tried / num_total
             elif match_keys:
                 current_key = match_keys[1]
             else:
                 continue
 
-            status = '\r{+} {C}Cracking WPA Handshake: %0.2f%%{W}' % percent
-            status += ' ETA: {C}%s{W}' % eta_str
-            status += ' @ {C}%0.1fkps{W}' % num_kps
-            # status += ' ({C}%d{W}/{C}%d{W} keys)' % (num_tried, num_total)
-            status += ' (current key: {C}%s{W})' % current_key
+            status = (
+                f'\r{{+}} {{C}}Cracking WPA Handshake: {percent:.2f}%{{W}}'
+                f' ETA: {{C}}{eta_str}{{W}}'
+                f' @ {{C}}{num_kps:.1f}kps{{W}}'
+                f' (current key: {{C}}{current_key}{{W}})'
+            )
             Color.clear_entire_line()
             Color.p(status)
 
@@ -170,4 +169,4 @@ if __name__ == '__main__':
     ), f'hexkey was "{hexkey}", expected "75:6E:63:6C:65"'
     assert asciikey == 'uncle', f'asciikey was "{asciikey}", expected "uncle"'
 
-    Configuration.exit_gracefully(0)
+    Configuration.exit_gracefully()

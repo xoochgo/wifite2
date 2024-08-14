@@ -6,6 +6,7 @@ from time import sleep, time
 from ..config import Configuration
 from ..tools.airodump import Airodump
 from ..util.color import Color
+from shlex import quote as shlex_quote
 
 
 class Scanner(object):
@@ -52,7 +53,7 @@ class Scanner(object):
                     self.print_targets()
 
                     target_count = len(self.targets)
-                    client_count = sum(len(t.clients) for t in self.targets)
+                    client_count = sum(len(t2.clients) for t2 in self.targets)
 
                     outline = '\r{+} Scanning'
                     if airodump.decloaking:
@@ -139,7 +140,7 @@ class Scanner(object):
         import os
 
         cmdtorun = 'cls' if platform.system().lower() == "windows" else 'clear'
-        os.system(cmdtorun)
+        os.system(shlex_quote(cmdtorun))
 
     def print_targets(self):
         """Prints targets selection menu (1 target per row)."""
@@ -285,7 +286,7 @@ if __name__ == '__main__':
         targets = s.select_targets()
     except Exception as e:
         Color.pl('\r {!} {R}Error{W}: %s' % str(e))
-        Configuration.exit_gracefully(0)
+        Configuration.exit_gracefully()
     for t in targets:
         Color.pl('    {W}Selected: %s' % t)
-    Configuration.exit_gracefully(0)
+    Configuration.exit_gracefully()

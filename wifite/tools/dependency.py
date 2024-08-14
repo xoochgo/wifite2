@@ -1,6 +1,15 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from wifite.tools.aircrack import Aircrack
+from wifite.tools.bully import Bully
+from wifite.tools.hashcat import Hashcat, HcxDumpTool, HcxPcapngTool
+from wifite.tools.ip import Ip
+from wifite.tools.iw import Iw
+from wifite.tools.macchanger import Macchanger
+from wifite.tools.reaver import Reaver
+from wifite.tools.tshark import Tshark
+
 
 class Dependency(object):
     dependency_name = None
@@ -22,15 +31,6 @@ class Dependency(object):
     @classmethod
     def run_dependency_check(cls):
         from ..util.color import Color
-
-        from .aircrack import Aircrack
-        from .ip import Ip
-        from .iw import Iw
-        from .bully import Bully
-        from .reaver import Reaver
-        from .tshark import Tshark
-        from .macchanger import Macchanger
-        from .hashcat import Hashcat, HcxDumpTool, HcxPcapngTool
 
         apps = [
             # Aircrack

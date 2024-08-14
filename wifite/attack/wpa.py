@@ -270,4 +270,4 @@ if __name__ == '__main__':
         wpa.run()
     except KeyboardInterrupt:
         Color.pl('')
-    Configuration.exit_gracefully(0)
+    Configuration.exit_gracefully()

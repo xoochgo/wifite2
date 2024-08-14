@@ -58,9 +58,9 @@ class Process(object):
         if Configuration.initialized and program in set(Configuration.existing_commands.keys()):
             return Configuration.existing_commands[program]
 
-        p = Process(['which', program])
-        stdout = p.stdout().strip()
-        stderr = p.stderr().strip()
+        p2 = Process(['which', program])
+        stdout = p2.stdout().strip()
+        stderr = p2.stderr().strip()
 
         exist = not stdout == stderr == ''
         if Configuration.initialized:

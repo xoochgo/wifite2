@@ -2,10 +2,13 @@
 
 try:
     from setuptools import setup
-except:
+except ImportError:
     raise ImportError("setuptools is required to install wifite2")
 
 from wifite.config import Configuration
+
+with open('README.md', 'r', encoding='utf-8') as fh:
+    long_description = fh.read()
 
 setup(
     name='wifite',
@@ -26,14 +29,8 @@ setup(
     license='GNU GPLv2',
     scripts=['bin/wifite'],
     description='Wireless Network Auditor for Linux & Android',
-    # long_description=open('README.md').read(),
-    long_description='''Wireless Network Auditor for Linux & Android.
-
-    Sniff, Injects and Cracks WEP, WPA/2, and WPS encrypted networks.
-
-    Depends on Aircrack-ng Suite, Tshark (from Wireshark),
-    and various other external tools.''',
-
+    long_description=long_description,
+    long_description_content_type='text/markdown',
     classifiers=[
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.4",

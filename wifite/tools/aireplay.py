@@ -12,7 +12,7 @@ import re
 from threading import Thread
 
 
-class WEPAttackType(object):
+class WEPAttackType:
     """ Enumeration of different WEP attack types """
     fakeauth = 0
     replay = 1
@@ -69,7 +69,7 @@ class Aireplay(Thread, Dependency):
                 attack_type - str, e.g. 'fakeauth', 'arpreplay', etc.
                 client_mac - MAC address of an associated client.
         """
-        super(Aireplay, self).__init__()  # Init the parent Thread
+        super().__init__()  # Init the parent Thread
 
         self.error = None
         self.status = None
@@ -214,14 +214,10 @@ class Aireplay(Thread, Dependency):
                     # Parse Packets Sent & PacketsPerSecond. Possible output lines:
                     # Read 55 packets (got 0 ARP requests and 0 ACKs), sent 0 packets...(0 pps)
                     # Read 4467 packets (got 1425 ARP requests and 1417 ACKs), sent 1553 packets...(100 pps)
-                    read_re = re.compile(r'Read (\d+) packets \(got (\d+) ARP requests '
-                                         r'and (\d+) ACKs\), sent (\d+) packets...\((\d+) pps\)')
+                    read_re = re.compile(r'Read (\d+) packets \(got (\d+) ARP requests and (\d+) ACKs\), sent (\d+) packets...\((\d+) pps\)')
                     if matches := read_re.match(line):
                         pps = matches[5]
-                        if pps == '0':
-                            self.status = 'Waiting for packet...'
-                        else:
-                            self.status = f'Replaying @ {pps}/sec'
+                        self.status = 'Waiting for packet...' if pps == '0' else f'Replaying @ {pps}/sec'
 
     def __del__(self):
         self.stop()
@@ -431,13 +427,3 @@ class Aireplay(Thread, Dependency):
 
         output = fakeauth_proc.stdout()
         return 'association successful' in output.lower()
-
-
-if __name__ == '__main__':
-    t = WEPAttackType(4)
-    print((t.name, type(t.name), t.value))
-    t = WEPAttackType('caffelatte')
-    print((t.name, type(t.name), t.value))
-
-    t = WEPAttackType(t)
-    print((t.name, type(t.name), t.value))

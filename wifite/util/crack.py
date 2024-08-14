@@ -17,7 +17,6 @@ from ..util.process import Process
 
 # TODO: Bring back the 'print' option, for easy copy/pasting. Just one-liners people can paste into terminal.
 
-
 class CrackHelper:
     """Manages handshake retrieval, selection, and running the cracking commands."""
 
@@ -254,7 +253,6 @@ class CrackHelper:
 
     @classmethod
     def crack_4way(cls, hs, tool):
-
         global key
         handshake = Handshake(hs['filename'],
                               bssid=hs['bssid'],
@@ -284,10 +282,10 @@ class CrackHelper:
         if tool != 'hashcat':
             Color.pl('{!} {O}Note: PMKID hashes can only be cracked using {C}hashcat{W}')
 
-        key = Hashcat.crack_pmkid(hs['filename'], verbose=True)
+        key2 = Hashcat.crack_pmkid(hs['filename'], verbose=True)
 
-        if key is not None:
-            return CrackResultPMKID(hs['bssid'], hs['essid'], hs['filename'], key)
+        if key2 is not None:
+            return CrackResultPMKID(hs['bssid'], hs['essid'], hs['filename'], key2)
         else:
             return None
 

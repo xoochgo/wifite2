@@ -20,10 +20,10 @@ class Bully(Attack, Dependency):
     dependency_name = 'bully'
     dependency_url = 'https://github.com/kimocoder/bully'
 
-    def __init__(self, target, pixie_dust=True):
-        super(Bully, self).__init__(target)
-
-        self.target = target
+    def __init__(self, target2, target3, pixie_dust=True):
+        super().__init__(target3)
+        self.pid = None
+        self.target = target2
         self.pixie_dust = pixie_dust
 
         self.total_attempts = 0
@@ -48,8 +48,8 @@ class Bully(Attack, Dependency):
 
         self.cmd.extend([
             'bully',
-            '--bssid', target.bssid,
-            '--channel', target.channel,
+            '--bssid', target2.bssid,
+            '--channel', target2.channel,
             # '--detectlock', # Detect WPS lockouts unreported by AP
 
             # Restoring session from '/root/.bully/34210901927c.run'
@@ -228,14 +228,13 @@ class Bully(Attack, Dependency):
         if key_re := re.search(r"^\s*KEY\s*:\s*'(.*)'\s*$", line):
             self.cracked_key = key_re[1]
 
-        if not self.crack_result and self.cracked_pin and self.cracked_key:
+        if self.cracked_pin and self.cracked_key:
             self.pattack('{G}Cracked Key: {C}%s{W}' % self.cracked_key, newline=True)
             self.crack_result = CrackResultWPS(
                 bssid=self.target.bssid,
                 essid=self.target.essid,
                 pin=self.cracked_pin,
-                psk=self.cracked_key,
-                channel=self.target.channel)
+                psk=self.cracked_key)
             Color.pl('')
             self.crack_result.dump()
 
@@ -322,7 +321,7 @@ class Bully(Attack, Dependency):
         self.stop()
 
     @staticmethod
-    def get_psk_from_pin(target, pin):
+    def get_psk_from_pin(target3, pin):
         # Fetches PSK from a Target assuming 'pin' is the correct PIN
         """
         bully --channel 1 --bssid 34:21:09:01:92:7C --pin 01030365 --bruteforce wlan0mon
@@ -333,8 +332,8 @@ class Bully(Attack, Dependency):
         """
         cmd = [
             'bully',
-            '--channel', target.channel,
-            '--bssid', target.bssid,
+            '--channel', target3.channel,
+            '--bssid', target3.bssid,
             '--pin', pin,
             '--bruteforce',
             '--force',

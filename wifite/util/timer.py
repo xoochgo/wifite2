@@ -3,8 +3,7 @@
 
 import time
 
-
-class Timer(object):
+class Timer:
     def __init__(self, seconds):
         self.start_time = time.time()
         self.end_time = self.start_time + seconds
