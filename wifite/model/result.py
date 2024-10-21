@@ -61,9 +61,6 @@ class CrackResult(object):
                     self.essid, Configuration.cracked_file))
                 return
 
-        Color.pl('{+} {C}%s{O} is now ignored in {G}%s{O}.' % (
-            self.essid, Configuration.cracked_file))
-
         saved_results.append(self.to_dict())
         with open(name, 'w') as fid:
             fid.write(dumps(saved_results, indent=2))
@@ -90,8 +87,8 @@ class CrackResult(object):
             Color.pl('{!} {R}no results found in {O}%s{W}' % name)
             return
 
-        Color.pl('\n{+} Displaying {G}%d{W} cracked or ignored target(s) from {C}%s{W}\n' % (
-            len(targets), cls.cracked_file))
+        Color.pl('\n{+} Displaying {G}%d{W} %s target(s) from {C}%s{W}\n' % (
+            len(targets), result_type, cls.cracked_file))
 
         results = sorted([cls.load(item) for item in targets], key=lambda x: x.date, reverse=True)
         longest_essid = max(len(result.essid or 'ESSID') for result in results)
