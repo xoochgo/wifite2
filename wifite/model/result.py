@@ -164,8 +164,7 @@ class CrackResult(object):
             result = CrackResultWPS(bssid=json['bssid'],
                                     essid=json['essid'],
                                     pin=json['pin'],
-                                    psk=json['psk'],
-                                    channel=json['channel'])
+                                    psk=json['psk'])
 
         elif json['type'] == 'PMKID':
             from .pmkid_result import CrackResultPMKID
