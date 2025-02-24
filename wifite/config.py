@@ -284,7 +284,7 @@ class Configuration(object):
             Color.pl('{+} {C}option:{W} using {G}random mac address{W} when scanning & attacking')
 
         if args.channel:
-            chn_arg_re = re.compile("^\d+((,\d+)|(-\d+,\d+))*(-\d+)?$")
+            chn_arg_re = re.compile(r"^\d+((,\d+)|(-\d+,\d+))*(-\d+)?$")
             if not chn_arg_re.match(args.channel):
                 raise ValueError("Invalid channel! The format must be 1,3-6,9")
 
