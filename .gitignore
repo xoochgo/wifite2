@@ -1,15 +1,21 @@
-*.swp
-py/hs/
-hs/
-*.bak
-.idea/
-cracked.json
-MANIFEST
+# Python
+venv/
 dist/
 build/
-files.txt
-*.wpc
 wifite.egg-info/
+**/__pycache__
+**/*.pyc
+MANIFEST
+
+# IDEs
+*.bak
+.idea/
+
+# Wifite
+py/hs/
+hs/
+cracked.json
+*.wpc
 tools/hcxdumptool/
 tools/hcxtools/
 tools/iw/
@@ -18,8 +24,8 @@ tools/bully/
 tools/pixiewps/
 tools/hashcat/
 wordlists/
-**/__pycache__
-**/*.pyc
+files.txt
+*.swp
 *.cmd
 *.ko
 *.mod
@@ -31,5 +37,3 @@ built-in.a
 Module.symvers
 *.pcap
 *.cap
-cracked.json
-venv/
