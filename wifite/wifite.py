@@ -101,7 +101,7 @@ class Wifite(object):
         Color.pl('{+} Finished attacking {C}%d{W} target(s), exiting' % attacked_targets)
 
 
-def entry_point():
+def main():
     try:
         wifite = Wifite()
         wifite.start()
@@ -118,4 +118,4 @@ def entry_point():
 
 
 if __name__ == '__main__':
-    entry_point()
+    main()
