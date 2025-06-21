@@ -31,7 +31,7 @@ jobs:
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@9bb56186c3b09b4f86b1c65136769dd318469633 # v4.1.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.0
       - name: Run Snyk to check configuration files for security issues
         # Snyk can be used to break the build when it detects security issues.
         # In this case we want to upload the issues to GitHub Code Scanning
@@ -50,5 +50,4 @@ jobs:
       - name: Upload result to GitHub Code Scanning
         uses: github/codeql-action/upload-sarif@df409f7d9260372bd5f19e5b04e83cb3c43714ae # v3.27.9
         with:
-          file: .
-          sarif: true
+          sarif_file: snyk.sarif
