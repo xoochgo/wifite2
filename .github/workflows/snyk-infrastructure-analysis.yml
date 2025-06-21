@@ -31,8 +31,8 @@ jobs:
         continue-on-error: true
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          file: iac/terraform/main.tf
+        #with:
+          #file: iac/terraform/main.tf
 
       - name: Upload SARIF to GitHub
         if: always()
