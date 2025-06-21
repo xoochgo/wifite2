@@ -265,12 +265,7 @@ class Target(object):
         else:
             display_encryption = Color.s('{W}%s' % display_encryption) # White for others
 
-        # Calculate padding for ENCR column based on its content length
-        # Max length of ENCR (e.g. WPA2-P) is 6. OPN is 3.
-        # Pad with spaces to ensure alignment
-        encryption_padding = " " * (5 - len(self.primary_encryption + self.primary_authentication)) # Max length of WPA2-P is 6 (WPA2 + -P)
-        encryption_display_string = f"{display_encryption}{auth_suffix}{encryption_padding}"
-
+        encryption_display_string = f"{display_encryption}{auth_suffix}".ljust(7) # Ensure consistent length
 
         power = f'{str(self.power).rjust(3)}db'
         if self.power > 50:
@@ -296,7 +291,7 @@ class Target(object):
         if len(self.clients) > 0:
             clients = Color.s('{G}  ' + str(len(self.clients)))
 
-        result = f'{essid}  {bssid}{manufacturer}{channel}  {encryption_display_string}   {power}  {wps}  {clients}'
+        result = f'{essid}  {bssid}{manufacturer}{channel}  {encryption_display_string}  {power}  {wps}  {clients}'
 
         result += Color.s('{W}')
         return result
