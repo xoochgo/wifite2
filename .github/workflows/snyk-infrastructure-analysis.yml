@@ -32,7 +32,7 @@ jobs:
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
-          file: iac/terraform/main.tf  # ✅ Change this to your actual file/folder
+          #file: iac/terraform/main.tf
 
       - name: Upload SARIF to GitHub
         if: always()
