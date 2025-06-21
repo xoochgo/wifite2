@@ -147,6 +147,24 @@ class Airmon(Dependency):
         Manually put interface into managed mode (no airmon-ng or vif).
         Fix for bad drivers like the rtl8812AU.
         """
+        # Get driver info for ICNSS2 check
+        iface_info = Airmon.get_iface_info(interface)
+        if iface_info and iface_info.driver == 'icnss2':
+            Color.p('{+} ICNSS2 driver detected for %s. Running "svc wifi disable"... ' % interface)
+            # Run 'svc wifi disable'
+            proc = Process(['svc', 'wifi', 'disable'])
+            # proc.wait() # Wait for command to complete.
+            # Alternatively, use Process.call for simpler cases if output isn't critical and we just need to run it
+            # For now, let's assume we want to wait and check for errors, similar to other Process calls.
+            stdout, stderr = proc.communicate() # communicate calls wait() internally
+            if proc.poll() == 0:
+                Color.pl('{G}success!{W}')
+            else:
+                Color.pl('{R}failed.{W}')
+                if stdout: Color.pl('{O}STDOUT: %s{W}' % stdout.strip())
+                if stderr: Color.pl('{R}STDERR: %s{W}' % stderr.strip())
+                # Decide if we should proceed or raise an error. For now, let's proceed.
+
         Ip.down(interface)
         Iw.mode(interface, 'managed')
         Ip.up(interface)
