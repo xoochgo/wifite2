@@ -6,7 +6,7 @@
 # issues, monitor images for newly disclosed vulnerabilities in Snyk and
 # fail PR checks for new vulnerabilities, see https://github.com/snyk/actions/
 
-name: Snyk Container 
+name: Snyk Container
 on: push
 permissions:
   contents: read
@@ -42,4 +42,5 @@ jobs:
     - name: Upload result to GitHub Code Scanning
       uses: github/codeql-action/upload-sarif@df409f7d9260372bd5f19e5b04e83cb3c43714ae # v3.27.9
       with:
-        sarif_file: snyk.sarif
+        file: .
+        sarif: true
