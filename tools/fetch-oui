@@ -92,6 +92,7 @@ foreach $key (sort keys %ieee_reg_urls) {
 #
    print "Processing IEEE $key registry data from $url\n" if $verbose;
    my $ua = LWP::UserAgent->new;
+   $ua->agent("Mozilla/5.0 (compatible; FetchOUI/1.0; +https://github.com/kimocoder/wifite2)");
    my $res = $ua->get($url);
    die $res->status_line unless $res->is_success;
    my $content = $res->content;
