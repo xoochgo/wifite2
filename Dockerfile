@@ -10,7 +10,7 @@ RUN echo "deb http://deb.debian.org/debian trixie main" > /etc/apt/sources.list 
     apt install -y --no-install-recommends \
         clang ca-certificates gcc openssl make kmod nano wget p7zip-full build-essential \
         libsqlite3-dev libpcap0.8-dev libpcap-dev sqlite3 pkg-config libnl-genl-3-dev \
-        libssl-dev net-tools iw ethtool usbutils pciutils wireless-tools git curl unzip \
+        libssl-dev net-tools iw ethtool usbutils pciutils wireless-tools git curl libcurl3-dev unzip \
         macchanger tshark rfkill autoconf automake libtool && \
     apt build-dep -y aircrack-ng && \
     apt clean && \
