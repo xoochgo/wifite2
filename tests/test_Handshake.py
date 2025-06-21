@@ -33,8 +33,11 @@ class TestHandshake(unittest.TestCase):
     def testHandshakeTshark(self):
         print("\nTesting handshake with tshark...")
         hs_file = self.getFile("handshake_exists.cap")
+        print("Testing file:", hs_file)
         hs = Handshake(hs_file, bssid='A4:2B:8C:16:6B:3A')
-        assert (len(hs.tshark_handshakes()) > 0), f'Expected len>0 but got len({len(hs.tshark_handshakes())})'
+        handshakes = hs.tshark_handshakes()
+        print(f"Found {len(handshakes)} handshake(s): {handshakes}")
+        assert len(handshakes) > 0, f'Expected len>0 but got len({len(handshakes)})'
 
     @unittest.skipUnless(Process.exists("cowpatty"), 'cowpatty is missing')
     def testHandshakeCowpatty(self):

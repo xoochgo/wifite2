@@ -6,8 +6,10 @@
 #sleep 2
 clear
 
-echo "** Starting unittest/pytest .."
+echo "** Starting pytest .."
 sleep 2
-python3 -m unittest discover tests -v
+#python3 -m unittest discover tests -v
 sleep 2
+pytest -k testNoHandshakeTshark
+#sleep 2
 echo "** runtests.sh test script at the end"
