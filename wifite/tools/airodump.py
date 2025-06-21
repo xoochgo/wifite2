@@ -282,23 +282,58 @@ class Airodump(Dependency):
         """ Filters targets based on Configuration """
         result = []
         # Filter based on Encryption
-        for target2 in targets5:
-            # Filter targets if --power
-            # TODO Filter a target based on the current power - not on the max power
-            # as soon as losing targets in a single scan does not cause excessive output
-            if Configuration.min_power > 0 and target2.max_power < Configuration.min_power:
+        active_filters = Configuration.encryption_filter
+        # If no specific encryption type filter is active (e.g. --wep, --wpa, --wpa3, --owe, --wps),
+        # then all types are considered. The default `Configuration.encryption_filter` is ['WEP', 'WPA', 'WPA3', 'OWE', 'WPS']
+        # So, if active_filters contains all of these, it means no specific filter was applied by the user.
+
+        is_filtering_specific_type = len(active_filters) < 5 # Heuristic: 5 is the current total number of distinct filterable types
+
+        for target_obj in targets5: # Renamed target2 to target_obj for clarity
+            # Power and client count filters apply universally
+            if Configuration.min_power > 0 and target_obj.max_power < Configuration.min_power:
+                continue
+            if Configuration.clients_only and len(target_obj.clients) == 0:
                 continue
 
-            if Configuration.clients_only and len(target2.clients) == 0:
-                continue
-            if 'WEP' in Configuration.encryption_filter and 'WEP' in target2.encryption:
-                result.append(target2)
-            elif 'WPA' in Configuration.encryption_filter and 'WPA' in target2.encryption:
-                result.append(target2)
-            elif 'WPS' in Configuration.encryption_filter and target2.wps in [WPSState.UNLOCKED, WPSState.LOCKED]:
-                result.append(target2)
-            elif skip_wps:
-                result.append(target2)
+            # Encryption type filtering
+            # The target_obj.encryption holds the *primary* encryption type like "WPA3", "WPA", "WEP", "OWE"
+            # The target_obj.wps holds WPS state.
+
+            # If no specific encryption filter is set by the user, or if skip_wps is True (which implies we are in an attack context not discovery)
+            # then we don't filter by encryption type here, BSSID/ESSID filters below will still apply.
+            # The main purpose of Configuration.encryption_filter is for user-driven discovery filtering.
+            if not is_filtering_specific_type and not skip_wps: # If not filtering by specific type during discovery
+                 result.append(target_obj)
+                 continue
+
+            # Apply active filters
+            added = False
+            if 'WEP' in active_filters and target_obj.primary_encryption == 'WEP':
+                result.append(target_obj)
+                added = True
+            elif 'WPA' in active_filters and target_obj.primary_encryption in ['WPA', 'WPA2']: # --wpa flag covers WPA and WPA2
+                result.append(target_obj)
+                added = True
+            elif 'WPA3' in active_filters and target_obj.primary_encryption == 'WPA3':
+                result.append(target_obj)
+                added = True
+            elif 'OWE' in active_filters and target_obj.primary_encryption == 'OWE':
+                result.append(target_obj)
+                added = True
+
+            # WPS filter can be combined. If a WPA/WPA2/WPA3 network also has WPS and --wps is specified.
+            # However, OWE and WEP typically don't have WPS in a meaningful way for these attacks.
+            if 'WPS' in active_filters and target_obj.wps in [WPSState.UNLOCKED, WPSState.LOCKED]:
+                if target_obj.primary_encryption in ['WPA', 'WPA2', 'WPA3']: # Only add if WPS is relevant to the base encryption
+                    if not added: # Avoid duplicate append if already added by WPA/WPA3 filter
+                        result.append(target_obj)
+                        added = True
+
+            if skip_wps and not added : # If we are in an attack context (skip_wps=True) and it hasn't been added by other filters.
+                                   # This ensures that if a specific BSSID is targeted for attack, it passes through.
+                result.append(target_obj)
+
 
         # Filter based on BSSID/ESSID
         bssid = Configuration.target_bssid

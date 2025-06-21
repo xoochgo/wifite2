@@ -312,8 +312,21 @@ class Arguments(object):
         wpa.add_argument('--wpa',
                          action='store_true',
                          dest='wpa_filter',
-                         help=Color.s('Show only {C}WPA-encrypted networks{W} (includes {C}WPS{W})'))
+                         help=Color.s('Show only {C}WPA/WPA2-encrypted networks{W} (may include {C}WPS{W})'))
         wpa.add_argument('-wpa', help=argparse.SUPPRESS, action='store_true', dest='wpa_filter')
+
+        wpa.add_argument('--wpa3',
+                         action='store_true',
+                         dest='wpa3_filter',
+                         help=Color.s('Show only {C}WPA3-encrypted networks{W} (SAE/OWE)'))
+        wpa.add_argument('-wpa3', help=argparse.SUPPRESS, action='store_true', dest='wpa3_filter')
+
+        wpa.add_argument('--owe',
+                         action='store_true',
+                         dest='owe_filter',
+                         help=Color.s('Show only {C}OWE-encrypted networks{W} (Enhanced Open)'))
+        wpa.add_argument('-owe', help=argparse.SUPPRESS, action='store_true', dest='owe_filter')
+
 
         wpa.add_argument('--hs-dir',
                          action='store',

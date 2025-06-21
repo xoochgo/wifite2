@@ -65,33 +65,52 @@ class AttackAll(object):
             # TODO: EvilTwin attack
             pass
 
-        elif 'WEP' in target.encryption:
+        elif target.primary_encryption == 'WEP':
             attacks.append(AttackWEP(target))
 
-        elif 'WPA' in target.encryption:
+        elif target.primary_encryption.startswith('WPA'): # Covers WPA, WPA2, WPA3
             # WPA can have multiple attack vectors:
 
             # WPS
-            if not Configuration.use_pmkid_only and target.wps is WPSState.UNLOCKED and AttackWPS.can_attack_wps():
+            # For WPA3, WPS is not applicable in the same way.
+            # WPS is generally being phased out with WPA3, though some transition modes might exist.
+            # We will only attempt WPS if it's explicitly WPA or WPA2 (not WPA3).
+            if target.primary_encryption != 'WPA3' and \
+               not Configuration.use_pmkid_only and \
+               target.wps is WPSState.UNLOCKED and \
+               AttackWPS.can_attack_wps():
+
                 # Pixie-Dust
                 if Configuration.wps_pixie:
                     attacks.append(AttackWPS(target, pixie_dust=True))
 
                 # Null PIN zero-day attack
-                if Configuration.wps_pin:
+                if Configuration.wps_pin: # This implies not wps_pixie_only
                     attacks.append(AttackWPS(target, pixie_dust=False, null_pin=True))
 
                 # PIN attack
-                if Configuration.wps_pin:
+                if Configuration.wps_pin: # This implies not wps_pixie_only
                     attacks.append(AttackWPS(target, pixie_dust=False))
 
-            if not Configuration.wps_only:
+            # PMKID and Handshake attacks are applicable to WPA, WPA2, and WPA3
+            if not Configuration.wps_only: # If --wps-only is not set
                 # PMKID
-                attacks.append(AttackPMKID(target))
+                if not Configuration.dont_use_pmkid: # If --no-pmkid is not set
+                    attacks.append(AttackPMKID(target))
 
                 # Handshake capture
+                if not Configuration.use_pmkid_only: # If --pmkid (means pmkid-only) is not set
+                    attacks.append(AttackWPA(target))
+            elif target.primary_encryption == 'WPA3' and Configuration.wps_only:
+                # Special case: If it's WPA3 and --wps-only is specified,
+                # WPS attacks are skipped. We should still allow PMKID/Handshake for WPA3.
+                Color.pl('{!} {O}Note: --wps-only is active, but target is WPA3. WPS attacks are not applicable.')
+                Color.pl('{+} {C}Proceeding with PMKID and Handshake attacks for WPA3 target.{W}')
+                if not Configuration.dont_use_pmkid:
+                    attacks.append(AttackPMKID(target))
                 if not Configuration.use_pmkid_only:
                     attacks.append(AttackWPA(target))
+
 
         if not attacks:
             Color.pl('{!} {R}Error: {O}Unable to attack: no attacks available')

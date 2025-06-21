@@ -148,7 +148,9 @@ class Configuration(object):
         cls.wep_keep_ivs = False  # Retain .ivs files across multiple attacks.
 
         # WPA variables
-        cls.wpa_filter = False  # Only attack WPA networks
+        cls.wpa_filter = False  # Only attack WPA/WPA2 networks
+        cls.wpa3_filter = False # Only attack WPA3 networks
+        cls.owe_filter = False # Only attack OWE networks
         cls.wpa_deauth_timeout = 15  # Wait time between deauths
         cls.wpa_attack_timeout = 300  # Wait time before failing
         cls.wpa_handshake_dir = 'hs'  # Dir to store handshakes
@@ -428,6 +430,12 @@ class Configuration(object):
         if args.wpa_filter:
             cls.wpa_filter = args.wpa_filter
 
+        if hasattr(args, 'wpa3_filter') and args.wpa3_filter:
+            cls.wpa3_filter = args.wpa3_filter
+
+        if hasattr(args, 'owe_filter') and args.owe_filter:
+            cls.owe_filter = args.owe_filter
+
         if args.wordlist:
             if not os.path.exists(args.wordlist):
                 cls.wordlist = None
@@ -558,16 +566,23 @@ class Configuration(object):
         cls.encryption_filter = []
         if cls.wep_filter:
             cls.encryption_filter.append('WEP')
-        if cls.wpa_filter:
-            cls.encryption_filter.append('WPA')
-        if cls.wps_filter:
+        if cls.wpa_filter: # WPA/WPA2
+            cls.encryption_filter.append('WPA') 
+        if cls.wpa3_filter:
+            cls.encryption_filter.append('WPA3')
+        if cls.owe_filter:
+            cls.encryption_filter.append('OWE')
+        if cls.wps_filter: # WPS can be on WPA/WPA2
             cls.encryption_filter.append('WPS')
 
-        if len(cls.encryption_filter) == 3:
-            Color.pl('{+} {C}option:{W} targeting {G}all encrypted networks{W}')
-        elif not cls.encryption_filter:
-            # Default to scan all types
-            cls.encryption_filter = ['WEP', 'WPA', 'WPS']
+        cls.encryption_filter = sorted(list(set(cls.encryption_filter))) # Remove duplicates and sort
+
+        if not cls.encryption_filter:
+            # Default to scan all known types if no specific filter is chosen
+            cls.encryption_filter = ['WEP', 'WPA', 'WPA3', 'OWE', 'WPS']
+            Color.pl('{+} {C}option:{W} targeting {G}all known encryption types{W} by default')
+        elif len(cls.encryption_filter) == 5 and 'WPS' in cls.encryption_filter and 'OWE' in cls.encryption_filter: # Approximation for "all"
+             Color.pl('{+} {C}option:{W} targeting {G}all specified encrypted networks{W}')
         else:
             Color.pl('{+} {C}option:{W} targeting {G}%s-encrypted{W} networks' % '/'.join(cls.encryption_filter))
 

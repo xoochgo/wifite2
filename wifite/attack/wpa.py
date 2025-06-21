@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 
 from ..model.attack import Attack
-from ..tools.aircrack import Aircrack
+from ..tools.aircrack import Aircrack # Still used for other things like WEP
+from ..tools.hashcat import Hashcat
 from ..tools.airodump import Airodump
 from ..tools.aireplay import Aireplay
 from ..config import Configuration
@@ -65,17 +66,29 @@ class AttackWPA(Attack):
             self.success = False
             return False
 
-        Color.pl('\n{+} {C}Cracking WPA Handshake:{W} Running {C}aircrack-ng{W} with '
-                 '{C}%s{W} wordlist' % os.path.split(Configuration.wordlist)[-1])
+        # Determine if the target is WPA3-SAE
+        target_is_wpa3_sae = self.target.primary_authentication == 'SAE'
 
-        # Crack it
-        key = Aircrack.crack_handshake(handshake, show_command=False)
+        cracker = "Hashcat" # Default to Hashcat
+        # TODO: Potentially add a fallback or user choice for aircrack-ng for non-SAE?
+        # For now, transitioning WPA/WPA2 cracking to Hashcat as well for consistency,
+        # as Hashcat mode 2500 (hccapx) is generally preferred over aircrack-ng.
+        # Aircrack.crack_handshake might be removed or kept for WEP only in future.
+
+        Color.pl(f'\n{{+}} {{C}}Cracking {"WPA3-SAE" if target_is_wpa3_sae else "WPA/WPA2"} Handshake:{{W}} Running {{C}}{cracker}{{W}} with '
+                 f'{{C}}{os.path.split(Configuration.wordlist)[-1] if Configuration.wordlist else "default wordlist"}{{W}} wordlist')
+
+        try:
+            key = Hashcat.crack_handshake(handshake, target_is_wpa3_sae, show_command=Configuration.verbose > 1)
+        except ValueError as e: # Catch errors from hash file generation (e.g. bad capture)
+            Color.pl(f"[!] Error during hash file generation for cracking: {e}")
+            key = None
+
         if key is None:
-            Color.pl('{!} {R}Failed to crack handshake: {O}%s{R} did not contain password{W}' %
-                     Configuration.wordlist.split(os.sep)[-1])
+            Color.pl(f"[!] Failed to crack handshake: {Configuration.wordlist.split(os.sep)[-1] if Configuration.wordlist else 'Wordlist'} did not contain password")
             self.success = False
         else:
-            Color.pl('{+} {G}Cracked WPA Handshake{W} PSK: {G}%s{W}\n' % key)
+            Color.pl(f"[+] Cracked {'WPA3-SAE' if target_is_wpa3_sae else 'WPA/WPA2'} Handshake Key: {key}\n")
             self.crack_result = CrackResultWPA(handshake.bssid, handshake.essid, handshake.capfile, key)
             self.crack_result.dump()
             self.success = True

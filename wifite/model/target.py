@@ -61,9 +61,9 @@ class Target(object):
                     2 Last time seen  (2015-05-27 19:28:46)
                     3 channel         (6)
                     4 Speed           (54)
-                    5 Privacy         (WPA2)
+                    5 Privacy         (WPA2 OWE)
                     6 Cipher          (CCMP TKIP)
-                    7 Authentication  (PSK)
+                    7 Authentication  (PSK SAE)
                     8 Power           (-62)
                     9 beacons         (2)
                     10 # IV           (0)
@@ -76,20 +76,37 @@ class Target(object):
         self.wps = WPSState.NONE
         self.bssid = fields[0].strip()
         self.channel = fields[3].strip()
-        self.encryption = fields[5].strip()
-        self.authentication = fields[7].strip()
+        self.encryption = fields[5].strip() # Contains encryption type(s) like "WPA2 WPA3 OWE"
+        self.authentication = fields[7].strip() # Contains auth type(s) like "PSK SAE MGT"
 
-        # airodump sometimes does not report the encryption type for some reason
-        # In this case (len = 0), defaults to WPA (which is the most common)
-        if 'WPA' in self.encryption or len(self.encryption) == 0:
-            self.encryption = 'WPA'
+        # Determine primary encryption and auth
+        if 'WPA3' in self.encryption:
+            self.primary_encryption = 'WPA3'
+        elif 'WPA2' in self.encryption:
+            self.primary_encryption = 'WPA2'
+        elif 'WPA' in self.encryption: # Handles cases where only "WPA" is present or if no other WPAx is found
+            self.primary_encryption = 'WPA'
         elif 'WEP' in self.encryption:
-            self.encryption = 'WEP'
-        elif 'WPS' in self.encryption:
-            self.encryption = 'WPS'
+            self.primary_encryption = 'WEP'
+        elif 'OWE' in self.encryption: # Opportunistic Wireless Encryption
+            self.primary_encryption = 'OWE'
+        elif len(self.encryption) == 0: # Default to WPA if not specified, as per old logic
+            self.primary_encryption = 'WPA'
+        else: # Fallback for unknown types
+            self.primary_encryption = self.encryption.split(' ')[0]
 
-        if len(self.encryption) > 4:
-            self.encryption = self.encryption[:4].strip()
+
+        if 'SAE' in self.authentication:
+            self.primary_authentication = 'SAE'
+        elif 'PSK' in self.authentication:
+            self.primary_authentication = 'PSK'
+        elif 'MGT' in self.authentication: # Enterprise
+            self.primary_authentication = 'MGT'
+        elif 'OWE' in self.authentication: # OWE uses its own auth mechanism
+            self.primary_authentication = 'OWE'
+        else:
+            self.primary_authentication = self.authentication.split(' ')[0]
+
 
         self.power = int(fields[8].strip())
         if self.power < 0:
@@ -119,6 +136,14 @@ class Target(object):
 
         self.clients = []
 
+        # Store full encryption and authentication strings for detailed info if needed
+        self.full_encryption_string = self.encryption
+        self.full_authentication_string = self.authentication
+        # For compatibility with existing logic that expects a single string:
+        self.encryption = self.primary_encryption # Overwrite with primary for now
+        self.authentication = self.primary_authentication # Overwrite with primary for now
+
+
         self.validate()
 
     def __eq__(self, other):
@@ -141,6 +166,15 @@ class Target(object):
                 other.essid = self.essid
                 other.essid_known = self.essid_known
                 other.essid_len = self.essid_len
+
+        # Transfer new fields as well
+        if hasattr(self, 'primary_encryption'):
+            other.primary_encryption = self.primary_encryption
+            other.full_encryption_string = self.full_encryption_string
+        if hasattr(self, 'primary_authentication'):
+            other.primary_authentication = self.primary_authentication
+            other.full_authentication_string = self.full_authentication_string
+
 
     def validate(self):
         """ Checks that the target is valid. """
@@ -203,16 +237,35 @@ class Target(object):
         channel_color = '{C}' if int(self.channel) > 14 else '{G}'
         channel = Color.s(f'{channel_color}{str(self.channel).rjust(3)}')
 
-        encryption = self.encryption.rjust(3)
-        if 'WEP' in encryption:
-            encryption = Color.s('{G}%s' % encryption)
-        elif 'WPA' in encryption:
-            if 'PSK' in self.authentication:
-                encryption = Color.s('{O}%s-P' % encryption)
-            elif 'MGT' in self.authentication:
-                encryption = Color.s('{R}%s-E' % encryption)
-            else:
-                encryption = Color.s('{O}%s  ' % encryption)
+        # Use primary_encryption and primary_authentication for display
+        display_encryption = self.primary_encryption.rjust(4) # Adjusted rjust for WPA3
+        auth_suffix = ''
+        if self.primary_encryption == 'WPA3':
+            display_encryption = Color.s('{P}%s' % display_encryption) # Purple for WPA3
+            if self.primary_authentication == 'SAE':
+                auth_suffix = Color.s('{P}-S') # Purple for SAE
+            elif self.primary_authentication == 'MGT':
+                 auth_suffix = Color.s('{R}-E') # Red for Enterprise
+        elif self.primary_encryption == 'WPA2':
+            display_encryption = Color.s('{O}%s' % display_encryption) # Orange for WPA2
+            if self.primary_authentication == 'PSK':
+                auth_suffix = Color.s('{O}-P')
+            elif self.primary_authentication == 'MGT':
+                auth_suffix = Color.s('{R}-E')
+        elif self.primary_encryption == 'WPA':
+            display_encryption = Color.s('{O}%s' % display_encryption) # Orange for WPA
+            if self.primary_authentication == 'PSK':
+                auth_suffix = Color.s('{O}-P')
+            elif self.primary_authentication == 'MGT':
+                auth_suffix = Color.s('{R}-E')
+        elif self.primary_encryption == 'WEP':
+            display_encryption = Color.s('{G}%s' % display_encryption) # Green for WEP
+        elif self.primary_encryption == 'OWE':
+            display_encryption = Color.s('{B}%s' % display_encryption) # Blue for OWE
+        else:
+            display_encryption = Color.s('{W}%s' % display_encryption) # White for others
+
+        encryption_display_string = f"{display_encryption}{auth_suffix}".ljust(7) # Ensure consistent length
 
         power = f'{str(self.power).rjust(3)}db'
         if self.power > 50:
@@ -238,7 +291,7 @@ class Target(object):
         if len(self.clients) > 0:
             clients = Color.s('{G}  ' + str(len(self.clients)))
 
-        result = f'{essid}  {bssid}{manufacturer}{channel}  {encryption}  {power}  {wps}  {clients}'
+        result = f'{essid}  {bssid}{manufacturer}{channel}  {encryption_display_string}  {power}  {wps}  {clients}'
 
         result += Color.s('{W}')
         return result
