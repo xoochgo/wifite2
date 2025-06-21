@@ -38,4 +38,6 @@ jobs:
         if: always()  # Or success() if you only want successful runs
         uses: github/codeql-action/upload-sarif@v2
         with:
-          sarif_file: snyk.sarif  # ✅ Optional: match actual SARIF filename
+          file: .
+          sarif: true
+          #sarif_file: snyk.sarif  # ✅ Optional: match actual SARIF filename
