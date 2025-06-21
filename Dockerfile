@@ -109,4 +109,4 @@ RUN git clone https://github.com/kimocoder/wifite2.git
 RUN chmod -R 777 /wifite2/
 WORKDIR /wifite2/
 RUN apt install rfkill -y
-ENTRYPOINT ["/bin/bash"]
+#ENTRYPOINT ["/bin/bash"]
