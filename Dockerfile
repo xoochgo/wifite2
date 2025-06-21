@@ -4,15 +4,15 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV HASHCAT_VERSION=hashcat-6.2.6
 ENV HASHCAT_UTILS_VERSION=1.9
 
-RUN sed -i 's/^# deb-src/deb-src/' /etc/apt/sources.list && \
+RUN echo "deb http://deb.debian.org/debian trixie main" > /etc/apt/sources.list && \
+    echo "deb-src http://deb.debian.org/debian trixie main" >> /etc/apt/sources.list && \
     apt update && \
-    apt upgrade -y && \
-    apt install -y \
+    apt install -y --no-install-recommends \
         clang ca-certificates gcc openssl make kmod nano wget p7zip-full build-essential \
         libsqlite3-dev libpcap0.8-dev libpcap-dev sqlite3 pkg-config libnl-genl-3-dev \
         libssl-dev net-tools iw ethtool usbutils pciutils wireless-tools git curl unzip \
-        macchanger tshark rfkill git autoconf automake libtool && \
-    apt build-dep aircrack-ng -y && \
+        macchanger tshark rfkill autoconf automake libtool && \
+    apt build-dep -y aircrack-ng && \
     apt clean && \
     rm -rf /var/lib/apt/lists/*
 
