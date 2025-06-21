@@ -4,6 +4,7 @@
 import os
 import re
 import signal
+import subprocess
 import time
 
 from .dependency import Dependency
@@ -175,10 +176,45 @@ class Airmon(Dependency):
             driver = interface.driver
         else:
             iface_name = interface
-            driver = None
+            driver = None # We'll try to fetch this if needed
 
         # Remember this as the 'base' interface.
         Airmon.base_interface = iface_name
+
+        # Try ICNSS2-specific activation first
+        if iface_name == 'wlan0':
+            # Try to get driver info if not already available
+            if driver is None:
+                iface_obj = Airmon.get_iface_info(iface_name)
+                if iface_obj:
+                    driver = iface_obj.driver
+
+            if driver == 'icnss2':
+                Color.p('{+} Attempting {G}ICNSS2 monitor mode{W} on {C}%s{W}... ' % iface_name)
+                con_mode_path = '/sys/module/wlan/parameters/con_mode'
+                if os.path.exists(con_mode_path):
+                    try:
+                        # Ensure interface is down before changing mode
+                        Ip.down(iface_name)
+                        subprocess.run(['echo', '4', '>', con_mode_path], shell=True, check=True, capture_output=True)
+                        # Bring interface up
+                        Ip.up(iface_name)
+                        # Verify it's in monitor mode
+                        if Iw.is_monitor(iface_name):
+                            Color.pl('{G}enabled (ICNSS2 specific)!{W}')
+                            # TODO: Consider if we need to set cls.use_ipiw or other flags here
+                            return iface_name
+                        else:
+                            Color.pl('{O}failed (ICNSS2 specific, could not verify monitor mode). Trying other methods...{W}')
+                            # Attempt to revert if possible, or let subsequent methods handle it
+                            # Process(['echo', '0', '>', con_mode_path], shell=True) # Optional: revert
+                    except subprocess.CalledProcessError as e:
+                        Color.pl('{R}failed (ICNSS2 specific command error: %s). Trying other methods...{W}' % e.stderr.decode().strip())
+                    except Exception as e:
+                        Color.pl('{R}failed (ICNSS2 specific error: %s). Trying other methods...{W}' % str(e))
+                else:
+                    Color.pl('{O}con_mode path not found for ICNSS2. Trying other methods...{W}')
+
 
         # If driver is deprecated then skip airmon-ng
         if driver not in Airmon.DEPRECATED_DRIVERS:
@@ -200,16 +236,19 @@ class Airmon(Dependency):
         if not Airmon.isdeprecated:
             # if that also fails, just give up
             if enabled_interface is None:
+                Color.pl('{R}failed to enable monitor mode using standard methods.{W}')
                 raise Exception('Failed to enable monitor mode')
 
             # Assert that there is an interface in monitor mode
-            interfaces = Iw.get_interfaces(mode='monitor')
-            if len(interfaces) == 0:
-                raise Exception('No interfaces in monitor mode')
+            # interfaces = Iw.get_interfaces(mode='monitor') # This might be too early if mon iface has a new name
+            # We rely on Iw.is_monitor(enabled_interface) or similar check later.
+            if not Iw.is_monitor(enabled_interface):
+                 # Airmon-ng sometimes creates a new interface (e.g. wlan0mon)
+                 # We need to check if *any* monitor interface was created if enabled_interface itself is not in mon mode.
+                 # However, our _parse_airmon_start should return the *new* monitor interface name.
+                Color.pl('{R}interface %s not in monitor mode after airmon-ng/iw.{W}' % enabled_interface)
+                raise Exception(f'Interface {enabled_interface} not in monitor mode after airmon-ng/iw')
 
-            # Assert that the interface enabled by airmon-ng is in monitor mode
-            if enabled_interface not in interfaces:
-                raise Exception('Enabled interface not in monitor mode')
 
         # No errors found; the device 'enabled_iface' was put into Mode:Monitor.
         Color.pl('{G}enabled{W}!')
