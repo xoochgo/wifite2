@@ -35,9 +35,7 @@ jobs:
           file: iac/terraform/main.tf  # ✅ Change this to your actual file/folder
 
       - name: Upload SARIF to GitHub
-        if: always()  # Or success() if you only want successful runs
+        if: always()
         uses: github/codeql-action/upload-sarif@v2
         with:
-          file: .
-          sarif: true
-          #sarif_file: snyk.sarif  # ✅ Optional: match actual SARIF filename
+          sarif_file: snyk.sarif
