@@ -82,22 +82,23 @@ $ source venv/bin/activate
 $ pip3 install -r requirements.txt
 ```
 
-Run Wifite
-----------
-```sh
-$ sudo ./wifite.py
-```
+## Install Wifite
 
-Install Wifite
---------------
-To install onto your computer (so you can just run `wifite` from any terminal),
-again, the choice is the old fashioned way of python ..
+To install Wifite, run:
 
 ```sh
-$ sudo python3 setup.py install
+git clone https://github.com/kimocoder/wifite2.git
+cd wifite2
+sudo python3 setup.py install
 ```
 
-This will install `wifite` to `/usr/sbin/wifite` which should be in your terminal path.
+## Run Wifite
+
+To run Wifite, simply execute:
+
+```sh
+sudo wifite
+```
 
 
 
