@@ -3,13 +3,30 @@
 
 import re
 
-from .dependency import Dependency
+from .dependency_base import Dependency
+from ..util.process import Process
 
 
 class Ip(Dependency):
-    dependency_required = True
-    dependency_name = 'ip'
-    dependency_url = 'apt install iproute2'
+    _dependency_required = True
+    _dependency_name = 'ip'
+    _dependency_url = 'apt install iproute2'
+
+    def name(self) -> str:
+        return self._dependency_name
+
+    def exists(self) -> bool:
+        return Process.exists(self._dependency_name)
+
+    def install(self) -> None:
+        # TODO: Implement actual installation logic or provide instructions
+        print(f"To install {self._dependency_name}, please visit {self._dependency_url}")
+        print("You may need to run: sudo apt install iproute2")
+
+    def print_install(self) -> None:
+        # TODO: Provide more detailed installation instructions
+        print(f"Please install {self._dependency_name} by visiting {self._dependency_url}")
+        print("You may need to run a command like: sudo apt install iproute2")
 
     @classmethod
     def up(cls, interface):

@@ -1,17 +1,34 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from .dependency import Dependency
+from .dependency_base import Dependency
 from ..tools.ip import Ip
 from ..util.color import Color
+from ..util.process import Process
 
 
 class Macchanger(Dependency):
-    dependency_required = False
-    dependency_name = 'macchanger'
-    dependency_url = 'apt install macchanger'
+    _dependency_required = False
+    _dependency_name = 'macchanger'
+    _dependency_url = 'apt install macchanger'
 
     is_changed = False
+
+    def name(self) -> str:
+        return self._dependency_name
+
+    def exists(self) -> bool:
+        return Process.exists(self._dependency_name)
+
+    def install(self) -> None:
+        # TODO: Implement actual installation logic or provide instructions
+        print(f"To install {self._dependency_name}, please visit {self._dependency_url}")
+        print("You may need to run: sudo apt install macchanger")
+
+    def print_install(self) -> None:
+        # TODO: Provide more detailed installation instructions
+        print(f"Please install {self._dependency_name} by visiting {self._dependency_url}")
+        print("You may need to run a command like: sudo apt install macchanger")
 
     @classmethod
     def down_macch_up(cls, iface, options):

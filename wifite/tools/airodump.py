@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from .dependency import Dependency
+from .dependency_base import Dependency
 from .tshark import Tshark
 from .wash import Wash
 from ..util.process import Process
@@ -15,9 +15,24 @@ import time
 
 class Airodump(Dependency):
     """ Wrapper around airodump-ng program """
-    dependency_required = True
-    dependency_name = 'airodump-ng'
-    dependency_url = 'https://www.aircrack-ng.org/install.html'
+    _dependency_required = True
+    _dependency_name = 'airodump-ng'
+    _dependency_url = 'https://www.aircrack-ng.org/install.html'
+
+    def name(self) -> str:
+        return self._dependency_name
+
+    def exists(self) -> bool:
+        return Process.exists(self._dependency_name)
+
+    def install(self) -> None:
+        # TODO: Implement actual installation logic or provide instructions
+        print(f"To install {self._dependency_name}, please visit {self._dependency_url}")
+
+    def print_install(self) -> None:
+        # TODO: Provide more detailed installation instructions
+        print(f"Please install {self._dependency_name} by visiting {self._dependency_url}")
+        print("You may need to run a command like: sudo apt install aircrack-ng")
 
     def __init__(self, interface=None, channel=None, encryption=None,
                  wps=WPSState.UNKNOWN, target_bssid=None,

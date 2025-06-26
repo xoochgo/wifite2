@@ -4,15 +4,31 @@
 import os
 import re
 
-from .dependency import Dependency
+from .dependency_base import Dependency
 from ..config import Configuration
 from ..util.process import Process
 
 
 class Aircrack(Dependency):
-    dependency_required = True
-    dependency_name = 'aircrack-ng'
-    dependency_url = 'https://www.aircrack-ng.org/install.html'
+    _dependency_name = 'aircrack-ng'
+    _dependency_url = 'https://www.aircrack-ng.org/install.html'
+    # TODO: Determine if this is truly required or optional for core functionality
+    _dependency_required = True
+
+    def name(self) -> str:
+        return self._dependency_name
+
+    def exists(self) -> bool:
+        return Process.exists(self._dependency_name)
+
+    def install(self) -> None:
+        # TODO: Implement actual installation logic or provide instructions
+        print(f"To install {self._dependency_name}, please visit {self._dependency_url}")
+
+    def print_install(self) -> None:
+        # TODO: Provide more detailed installation instructions
+        print(f"Please install {self._dependency_name} by visiting {self._dependency_url}")
+        print("You may need to run a command like: sudo apt install aircrack-ng")
 
     def __init__(self, ivs_file2=None):
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from .dependency import Dependency
+from .dependency_base import Dependency
 from ..config import Configuration
 from ..util.color import Color
 from ..util.process import Process
@@ -12,9 +12,26 @@ import os
 
 class John(Dependency):
     """ Wrapper for John program. """
-    dependency_required = False
-    dependency_name = 'john'
-    dependency_url = 'https://www.openwall.com/john/'
+    _dependency_required = False
+    _dependency_name = 'john'
+    _dependency_url = 'https://www.openwall.com/john/'
+
+    def name(self) -> str:
+        return self._dependency_name
+
+    def exists(self) -> bool:
+        return Process.exists(self._dependency_name)
+
+    def install(self) -> None:
+        # TODO: Implement actual installation logic or provide instructions
+        print(f"To install {self._dependency_name}, please visit {self._dependency_url}")
+        print("You may need to run: sudo apt install john or build from source.")
+
+    def print_install(self) -> None:
+        # TODO: Provide more detailed installation instructions
+        print(f"Please install {self._dependency_name} by visiting {self._dependency_url}")
+        print("You can typically install John The Ripper using your package manager (e.g., sudo apt install john)")
+        print("Alternatively, download and build from source from the official website.")
 
     @staticmethod
     def crack_handshake(handshake, show_command=False):

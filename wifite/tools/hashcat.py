@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from .dependency import Dependency
+from .dependency_base import Dependency
 from ..config import Configuration
 from ..util.process import Process
 from ..util.color import Color
@@ -12,9 +12,25 @@ hccapx_autoremove = False  # change this to True if you want the hccapx files to
 
 
 class Hashcat(Dependency):
-    dependency_required = False
-    dependency_name = 'hashcat'
-    dependency_url = 'https://hashcat.net/hashcat/'
+    _dependency_required = False
+    _dependency_name = 'hashcat'
+    _dependency_url = 'https://hashcat.net/hashcat/'
+
+    def name(self) -> str:
+        return self._dependency_name
+
+    def exists(self) -> bool:
+        return Process.exists(self._dependency_name)
+
+    def install(self) -> None:
+        # TODO: Implement actual installation logic or provide instructions
+        print(f"To install {self._dependency_name}, please visit {self._dependency_url}")
+        print("You may need to run: sudo apt install hashcat")
+
+    def print_install(self) -> None:
+        # TODO: Provide more detailed installation instructions
+        print(f"Please install {self._dependency_name} by visiting {self._dependency_url}")
+        print("You may need to run a command like: sudo apt install hashcat")
 
     @staticmethod
     def should_use_force():
@@ -100,9 +116,25 @@ class Hashcat(Dependency):
 
 
 class HcxDumpTool(Dependency):
-    dependency_required = False
-    dependency_name = 'hcxdumptool'
-    dependency_url = 'apt install hcxdumptool'
+    _dependency_required = False
+    _dependency_name = 'hcxdumptool'
+    _dependency_url = 'apt install hcxdumptool'
+
+    def name(self) -> str:
+        return self._dependency_name
+
+    def exists(self) -> bool:
+        return Process.exists(self._dependency_name)
+
+    def install(self) -> None:
+        # TODO: Implement actual installation logic or provide instructions
+        print(f"To install {self._dependency_name}, please visit {self._dependency_url}")
+        print("You may need to run: sudo apt install hcxdumptool")
+
+    def print_install(self) -> None:
+        # TODO: Provide more detailed installation instructions
+        print(f"Please install {self._dependency_name} by visiting {self._dependency_url}")
+        print("You may need to run a command like: sudo apt install hcxdumptool")
 
     def __init__(self, target, pcapng_file):
         if os.path.exists(pcapng_file):
@@ -125,9 +157,25 @@ class HcxDumpTool(Dependency):
 
 
 class HcxPcapngTool(Dependency):
-    dependency_required = False
-    dependency_name = 'hcxpcapngtool'
-    dependency_url = 'apt install hcxtools'
+    _dependency_required = False
+    _dependency_name = 'hcxpcapngtool'
+    _dependency_url = 'apt install hcxtools'
+
+    def name(self) -> str:
+        return self._dependency_name
+
+    def exists(self) -> bool:
+        return Process.exists(self._dependency_name)
+
+    def install(self) -> None:
+        # TODO: Implement actual installation logic or provide instructions
+        print(f"To install {self._dependency_name}, please visit {self._dependency_url}")
+        print("You may need to run: sudo apt install hcxtools")
+
+    def print_install(self) -> None:
+        # TODO: Provide more detailed installation instructions
+        print(f"Please install {self._dependency_name} by visiting {self._dependency_url}")
+        print("You may need to run a command like: sudo apt install hcxtools")
 
     def __init__(self, target):
         self.target = target

@@ -3,7 +3,7 @@ import re
 import time
 
 from .airodump import Airodump
-from .dependency import Dependency
+from .dependency_base import Dependency
 from ..config import Configuration
 from ..model.attack import Attack
 from ..model.wps_result import CrackResultWPS
@@ -13,9 +13,31 @@ from ..util.timer import Timer
 
 
 class Reaver(Attack, Dependency):
-    dependency_required = False
-    dependency_name = 'reaver'
-    dependency_url = 'https://github.com/t6x/reaver-wps-fork-t6x'
+    _dependency_required = False
+    _dependency_name = 'reaver'
+    _dependency_url = 'https://github.com/t6x/reaver-wps-fork-t6x'
+
+    def name(self) -> str:
+        return self._dependency_name
+
+    def exists(self) -> bool:
+        return Process.exists(self._dependency_name)
+
+    def install(self) -> None:
+        # TODO: Implement actual installation logic or provide instructions
+        print(f"To install {self._dependency_name}, please visit {self._dependency_url}")
+        print("You may need to run: sudo apt install reaver or build from the source at the URL.")
+
+    def print_install(self) -> None:
+        # TODO: Provide more detailed installation instructions
+        print(f"Please install {self._dependency_name} by visiting {self._dependency_url}")
+        print("For the t6x fork (recommended), you'll likely need to build from source:")
+        print("  git clone https://github.com/t6x/reaver-wps-fork-t6x")
+        print("  cd reaver-wps-fork-t6x/src")
+        print("  ./configure")
+        print("  make")
+        print("  sudo make install")
+        print("Alternatively, your package manager might have a version (e.g., sudo apt install reaver), but it might be outdated.")
 
     def __init__(self, target, pixie_dust=True, null_pin=False):
         super(Reaver, self).__init__(target)

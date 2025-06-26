@@ -7,7 +7,7 @@ import signal
 import subprocess
 import time
 
-from .dependency import Dependency
+from .dependency_base import Dependency
 from .ip import Ip
 from .iw import Iw
 from ..config import Configuration
@@ -53,14 +53,29 @@ class AirmonIface:
 
 class Airmon(Dependency):
     """ Wrapper around the 'airmon-ng' program """
-    dependency_required = True
-    dependency_name = 'airmon-ng'
-    dependency_url = 'https://www.aircrack-ng.org/install.html'
+    _dependency_required = True
+    _dependency_name = 'airmon-ng'
+    _dependency_url = 'https://www.aircrack-ng.org/install.html'
     chipset_table = 'https://wikidevi.com/wiki/Wireless_adapters/Chipset_table'
     base_interface = None
     killed_network_manager = False
     use_ipiw = False
     isdeprecated = False
+
+    def name(self) -> str:
+        return self._dependency_name
+
+    def exists(self) -> bool:
+        return Process.exists(self._dependency_name)
+
+    def install(self) -> None:
+        # TODO: Implement actual installation logic or provide instructions
+        print(f"To install {self._dependency_name}, please visit {self._dependency_url}")
+
+    def print_install(self) -> None:
+        # TODO: Provide more detailed installation instructions
+        print(f"Please install {self._dependency_name} by visiting {self._dependency_url}")
+        print("You may need to run a command like: sudo apt install aircrack-ng")
 
     # Drivers that need to be manually put into monitor mode
     BAD_DRIVERS = ['rtl8821au']

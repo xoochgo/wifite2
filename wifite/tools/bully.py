@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from .dependency import Dependency
+from .dependency_base import Dependency
 from .airodump import Airodump
 from ..model.attack import Attack
 from ..model.wps_result import CrackResultWPS
@@ -16,9 +16,29 @@ from threading import Thread
 
 
 class Bully(Attack, Dependency):
-    dependency_required = False
-    dependency_name = 'bully'
-    dependency_url = 'https://github.com/kimocoder/bully'
+    _dependency_required = False
+    _dependency_name = 'bully'
+    _dependency_url = 'https://github.com/kimocoder/bully'
+
+    def name(self) -> str:
+        return self._dependency_name
+
+    def exists(self) -> bool:
+        return Process.exists(self._dependency_name)
+
+    def install(self) -> None:
+        # TODO: Implement actual installation logic or provide instructions
+        print(f"To install {self._dependency_name}, please visit {self._dependency_url}")
+        print("You may need to run: git clone https://github.com/kimocoder/bully && cd bully/src && make && sudo make install")
+
+    def print_install(self) -> None:
+        # TODO: Provide more detailed installation instructions
+        print(f"Please install {self._dependency_name} by visiting {self._dependency_url}")
+        print("Installation instructions usually involve cloning the repository and running make install:")
+        print("  git clone https://github.com/kimocoder/bully")
+        print("  cd bully/src")
+        print("  make")
+        print("  sudo make install")
 
     def __init__(self, target2, target3, pixie_dust=True):
         super().__init__(target3)
