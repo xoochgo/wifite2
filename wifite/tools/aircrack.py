@@ -134,6 +134,31 @@ class Aircrack(Dependency):
 
         return key
 
+    @staticmethod
+    def crack_pmkid(pmkid_file, wordlist=None, verbose=False):
+        """
+        Подбор PMKID с помощью aircrack-ng.
+        """
+        from ..util.color import Color
+        if wordlist is None:
+            wordlist = Configuration.wordlist
+        cap_file = pmkid_file
+        if pmkid_file.endswith('.22000'):
+            cap_file = pmkid_file.replace('.22000', '.cap')
+            # Конвертация PMKID в .cap
+            Process(['hcxpcapngtool', '-o', cap_file, pmkid_file]).wait()
+        command = ['aircrack-ng', '-w', wordlist, '-l', cap_file + '.key', cap_file]
+        if verbose:
+            Color.pl('{+} Запуск: %s' % ' '.join(command))
+        proc = Process(command)
+        proc.wait()
+        key_file = cap_file + '.key'
+        if os.path.exists(key_file):
+            with open(key_file) as f:
+                key = f.read().strip()
+            os.remove(key_file)
+            return key
+        return None
 
 if __name__ == '__main__':
     (hexkey, asciikey) = Aircrack._hex_and_ascii_key('A1B1C1D1E1')
