@@ -4,7 +4,6 @@
 from ..util.color import Color
 from .result import CrackResult
 
-
 class CrackResultPMKID(CrackResult):
     def __init__(self, bssid, essid, pmkid_file, key):
         self.result_type = 'PMKID'
@@ -16,16 +15,16 @@ class CrackResultPMKID(CrackResult):
 
     def dump(self):
         if self.essid:
-            Color.pl(f'{{+}} {"Access Point Name".rjust(19)}: {{C}}{self.essid}{{W}}')
+            Color.pl(f'{{+}} {"Имя точки доступа".rjust(19)}: {{C}}{self.essid}{{W}}')
         if self.bssid:
-            Color.pl(f'{{+}} {"Access Point BSSID".rjust(19)}: {{C}}{self.bssid}{{W}}')
-        Color.pl('{+} %s: {C}%s{W}' % ('Encryption'.rjust(19), self.result_type))
+            Color.pl(f'{{+}} {"BSSID точки доступа".rjust(19)}: {{C}}{self.bssid}{{W}}')
+        Color.pl('{+} %s: {C}%s{W}' % ('Шифрование'.rjust(19), self.result_type))
         if self.pmkid_file:
-            Color.pl('{+} %s: {C}%s{W}' % ('PMKID File'.rjust(19), self.pmkid_file))
+            Color.pl('{+} %s: {C}%s{W}' % ('Файл PMKID'.rjust(19), self.pmkid_file))
         if self.key:
-            Color.pl('{+} %s: {G}%s{W}' % ('PSK (password)'.rjust(19), self.key))
+            Color.pl('{+} %s: {G}%s{W}' % ('Пароль (PSK)'.rjust(19), self.key))
         else:
-            Color.pl('{!} %s  {O}key unknown{W}' % ''.rjust(19))
+            Color.pl('{!} %s  {O}ключ не найден{W}' % ''.rjust(19))
 
     def print_single_line(self, longest_essid):
         self.print_single_line_prefix(longest_essid)
@@ -43,14 +42,3 @@ class CrackResultPMKID(CrackResult):
             'key': self.key,
             'pmkid_file': self.pmkid_file
         }
-
-
-if __name__ == '__main__':
-    w = CrackResultPMKID('AA:BB:CC:DD:EE:FF', 'Test Router', 'hs/pmkid_blah-123213.22000', 'abcd1234')
-    w.dump()
-
-    w = CrackResultPMKID('AA:BB:CC:DD:EE:FF', 'Test Router', 'hs/pmkid_blah-123213.22000', 'Key')
-    print('\n')
-    w.dump()
-    w.save()
-    print((w.__dict__['bssid']))
