@@ -1,46 +1,25 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+import subprocess
 
-from .dependency import Dependency
-
-
-class Iw(Dependency):
-    dependency_required = True
-    dependency_name = 'iw'
-    dependency_url = 'apt install iw'
-
-    @classmethod
-    def mode(cls, iface, mode_name):
-        from ..util.process import Process
-
-        if mode_name == "monitor":
-            return Process.call(f'iw {iface} set monitor control')
-        else:
-            return Process.call(f'iw {iface} type {mode_name}')
-
-    @classmethod
-    def get_interfaces(cls, mode=None):
-        from ..util.process import Process
-        import re
-
-        ireg = re.compile(r"\s+Interface\s[a-zA-Z\d]+")
-        mreg = re.compile(r"\s+type\s[a-zA-Z]+")
-
-        interfaces = set()
-        iface = ''
-
-        (out, err) = Process.call('iw dev')
-        if mode is None:
-            for line in out.split('\n'):
-                if ires := ireg.search(line):
-                    interfaces.add(ires.group().split("Interface")[-1])
-        else:
-            for line in out.split('\n'):
-                ires = ireg.search(line)
-                if mres := mreg.search(line):
-                    if mode == mres.group().split("type")[-1][1:]:
-                        interfaces.add(iface)
-                if ires:
-                    iface = ires.group().split("Interface")[-1][1:]
-
-        return list(interfaces)
+class Iw:
+    @staticmethod
+    def is_monitor(interface):
+        """
+        Проверяет, находится ли интерфейс в режиме monitor.
+        Возвращает True, если интерфейс в режиме monitor, иначе False.
+        """
+        try:
+            # Пробуем с помощью iwconfig (классический способ)
+            output = subprocess.check_output(['iwconfig', interface], stderr=subprocess.STDOUT).decode(errors="ignore")
+            for line in output.splitlines():
+                if 'Mode:Monitor' in line:
+                    return True
+                if 'monitor mode' in line.lower():
+                    return True
+            # Альтернативно, используем `iw dev` (современные системы)
+            iw_output = subprocess.check_output(['iw', 'dev', interface, 'info'], stderr=subprocess.STDOUT).decode(errors="ignore")
+            for line in iw_output.splitlines():
+                if 'type monitor' in line.lower():
+                    return True
+        except Exception:
+            pass
+        return False
