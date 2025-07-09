@@ -14,10 +14,10 @@ from ..tools.john import John
 from ..util.color import Color
 from ..util.process import Process
 
-# Дальше должен идти класс или функции, отступ 0
 class CrackHelper:
-    # методы класса с отступом 4 пробела
-    ...
+    """
+    Manages handshake retrieval, selection, and running the cracking commands.
+    """
 
     TYPES = {
         '4-WAY': '4-Way Handshake',
