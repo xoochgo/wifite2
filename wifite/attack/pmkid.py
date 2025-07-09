@@ -1,12 +1,13 @@
-import os
-import time
-import re
-from shutil import copy
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
-from ..tools.aircrack import Aircrack
-from ..config import Configuration
+from ..model.attack import Attack
 from ..util.color import Color
-from ..attack import Attack
+from ..config import Configuration
+from ..tools.aircrack import Aircrack
+import os
+import re
+import time
 
 class AttackPMKID(Attack):
     def __init__(self, target):
@@ -70,9 +71,4 @@ class AttackPMKID(Attack):
             self.crack_result = result
             self.success = True
         else:
-            Color.pl('{!} Ключ не найден')
-            self.success = False
-        return True
-
-    def run(self):
-        self.run_aircrack()
+            Color.pl('{!
