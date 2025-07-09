@@ -71,4 +71,15 @@ class AttackPMKID(Attack):
             self.crack_result = result
             self.success = True
         else:
-            Color.pl('{!
+            Color.pl('{!} Ключ не найден')
+            self.success = False
+        return True
+
+    def capture_pmkid(self):
+        # Здесь должна быть реализация захвата PMKID, например через hcxdumptool/hcxtools.
+        # Пока просто выводим предупреждение.
+        Color.pl('{!} Захват PMKID не реализован. Добавьте реализацию с использованием hcxdumptool/hcxtools.')
+        return None
+
+    def run(self):
+        self.run_aircrack()
