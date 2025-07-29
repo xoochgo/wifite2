@@ -1,4 +1,6 @@
 name: Check PR using Sourcery
+permissions:
+  contents: read
 
 on: pull_request
 
