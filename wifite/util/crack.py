@@ -266,7 +266,7 @@ class CrackHelper:
         if tool == 'aircrack':
             key = Aircrack.crack_handshake(handshake, show_command=True)
         elif tool == 'hashcat':
-            key = Hashcat.crack_handshake(handshake, show_command=True)
+            key = Hashcat.crack_handshake(handshake, target_is_wpa3_sae=False, show_command=True)
         elif tool == 'john':
             key = John.crack_handshake(handshake, show_command=True)
         elif tool == 'cowpatty':
