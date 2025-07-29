@@ -58,12 +58,12 @@ if (defined $opts{f}) {
 }
 $verbose=$opts{v} ? 1 : 0;
 #
-# If the output filename already exists, rename it to filename.bak before
+# If the output filename already exists, delete it before
 # we create the new output file.
 #
 if (-f $filename) {
-   print "Renaming $filename to $filename.bak\n" if $verbose;
-   rename $filename, "$filename.bak" || die "Could not rename $filename to $filename.bak\n";
+   print "Deleting existing $filename\n" if $verbose;
+   unlink $filename or die "Could not delete $filename\n";
 }
 #
 # Open the output file for writing.
