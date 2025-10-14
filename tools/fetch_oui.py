@@ -22,7 +22,7 @@ def fetch_csv(url, verbose=False):
     headers = {"User-Agent": "Mozilla/5.0 (compatible; FetchOUI/1.0; +https://github.com/kimocoder/wifite2)"}
     if verbose:
         print(f"→ Fetching {url}")
-    response = requests.get(url, headers=headers)
+    response = requests.get(url, headers=headers, timeout=30)
     if not response.ok:
         raise RuntimeError(f"Failed to fetch {url}: {response.status_code} {response.reason}")
     if len(response.content) == 0:
