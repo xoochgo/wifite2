@@ -11,9 +11,6 @@ from ..config import Configuration
 from ..util.color import Color
 from ..util.process import Process
 
-# TODO: Add logging support, dry-run, and a --no-download option for offline parsing
-
-
 class DBUpdater:
     """Updates a local database of MAC address prefixes to vendor names from IEEE registries.
     """
@@ -36,8 +33,6 @@ class DBUpdater:
         filename = Configuration.db_filename
         verbose = bool(Configuration.verbose)
 
-
-        # Remove old file (boilerplate)
         if os.path.exists(filename):
             up_to_date, last_updated = cls.is_up_to_date(filename)
             
@@ -48,7 +43,6 @@ class DBUpdater:
                 Color.pl('{!} {O}Deleting existing {R}%s{W}' % filename)
             os.remove(filename)
 
-        # Do updates
         try:
             total_written = cls.update_all(filename, verbose=verbose)
         except KeyboardInterrupt:
@@ -72,7 +66,6 @@ class DBUpdater:
                     written = cls.parse_and_write_csv(csv_content, outfile, key, verbose=verbose)
                     written_total += written
                 except Exception as e:
-                    # Mirror your example: print to stderr but continue processing others
                     print(f"Error processing {key}: {e}", file=sys.stderr)
         return written_total
     
@@ -80,7 +73,7 @@ class DBUpdater:
     @classmethod
     def fetch_csv(cls, url: str, verbose: bool = False) -> str:
         """Download CSV content (boilerplate; uses requests)."""
-        headers = {"User-Agent": "Mozilla/5.0 (compatible; DBUpdater/1.0)"}
+        headers = {"User-Agent": "Mozilla/5.0 (compatible; FetchOUI/1.0; +https://github.com/kimocoder/wifite2)"}
         if verbose:
             Color.pl('  →  Fetching %s' % url)
         response = requests.get(url, headers=headers, timeout=30)
