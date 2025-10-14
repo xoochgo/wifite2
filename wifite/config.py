@@ -46,6 +46,8 @@ class Configuration(object):
     show_bssids = None
     show_cracked = None
     show_ignored = None
+    update_db = None
+    db_filename = None
     show_manufacturers = None
     skip_crack = None
     target_bssid = None
@@ -215,6 +217,8 @@ class Configuration(object):
         cls.show_ignored = False
         cls.check_handshake = None
         cls.crack_handshake = False
+        cls.update_db = False
+        cls.db_filename = 'ieee-oui.txt'
 
         # A list to cache all checked commands (e.g. `which hashcat` will execute only once)
         cls.existing_commands = {}
@@ -267,7 +271,8 @@ class Configuration(object):
             cls.check_handshake = args.check_handshake
         if args.crack_handshake:
             cls.crack_handshake = True
-
+        if args.update_db:
+            cls.update_db = True
     @classmethod
     def validate(cls):
         if cls.use_pmkid_only and cls.wps_only:
