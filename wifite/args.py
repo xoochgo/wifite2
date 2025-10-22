@@ -518,6 +518,11 @@ class Arguments(object):
                               action='store_true',
                               dest='crack_handshake',
                               help=Color.s('Show commands to crack a captured handshake'))
+        
+        commands.add_argument('--update-db',
+                              action='store_true',
+                              dest='update_db',
+                              help=Color.s('Update the local MAC address prefix database from IEEE registries'))
 
 
 if __name__ == '__main__':
