@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import subprocess
 from enum import Enum
 from .pmkid import AttackPMKID
 from .wep import AttackWEP
@@ -23,6 +24,11 @@ class AttackAll(object):
         Attacks all given `targets` (list[wifite.model.target]) until user interruption.
         Returns: Number of targets that were attacked (int)
         """
+        # Safety check: ensure targets is not None
+        if targets is None:
+            Color.pl('{!} {R}Error: No targets provided for attack{W}')
+            return 0
+
         if any(t.wps for t in targets) and not AttackWPS.can_attack_wps():
             # Warn that WPS attacks are not available.
             Color.pl('{!} {O}Note: WPS attacks are not possible because you do not have {C}reaver{O} nor {C}bully{W}')
@@ -35,6 +41,11 @@ class AttackAll(object):
                 break
             attacked_targets += 1
             targets_remaining -= 1
+
+            # Periodic cleanup to prevent file descriptor leaks
+            if index % 5 == 0:  # Every 5 targets
+                from ..util.process import Process
+                Process.check_fd_limit()
 
             bssid = target.bssid
             essid = target.essid if target.essid_known else '{O}ESSID unknown{W}'
@@ -124,12 +135,31 @@ class AttackAll(object):
                 result = attack.run()
                 if result:
                     break  # Attack was successful, stop other attacks.
+            except (OSError, IOError) as e:
+                # File system or process errors
+                Color.pl('\r {!} {R}System Error{W}: %s' % str(e))
+                continue
+            except subprocess.CalledProcessError as e:
+                # Command execution failures
+                Color.pl('\r {!} {R}Command Failed{W}: %s' % str(e))
+                continue
+            except ValueError as e:
+                # Invalid data or configuration
+                Color.pl('\r {!} {R}Configuration Error{W}: %s' % str(e))
+                continue
+            except PermissionError as e:
+                # Permission issues
+                Color.pl('\r {!} {R}Permission Error{W}: %s' % str(e))
+                continue
             except Exception as e:
-                # TODO:kimocoder: below is a great way to handle Exception
-                # rather then running full traceback in run of parsing to console.
-                Color.pl('\r {!} {R}Error{W}: %s' % str(e))
-                #Color.pexception(e)         # This was the original one which parses full traceback
-                #Color.pl('\n{!} {R}Exiting{W}\n')      # Another great one for other uasages.
+                # Unexpected errors - still catch but log more info
+                Color.pl('\r {!} {R}Unexpected Error{W}: %s' % str(e))
+                if Configuration.verbose > 0:
+                    Color.pexception(e)
+                # Force cleanup on unexpected errors to prevent resource leaks
+                from ..util.process import ProcessManager, Process
+                ProcessManager().cleanup_all()
+                Process.cleanup_zombies()
                 continue
             except KeyboardInterrupt:
                 Color.pl('\n{!} {O}Interrupted{W}\n')

@@ -8,7 +8,7 @@ from ..util.color import Color
 from ..util.timer import Timer
 from ..model.pmkid_result import CrackResultPMKID
 from ..tools.airodump import Airodump
-from threading import Thread
+from threading import Thread, active_count
 import os
 import time
 import re
@@ -242,6 +242,12 @@ class AttackPMKID(Attack):
         self.keep_capturing = True
         self.timer = Timer(Configuration.pmkid_timeout)
 
+        # Check file descriptor usage and thread count before starting
+        from ..util.process import Process
+        if Process.check_fd_limit() or active_count() > 20:  # Limit concurrent threads
+            Color.pl('{!} {O}Delaying PMKID attack due to high resource usage{W}')
+            time.sleep(2)  # Brief delay to allow cleanup
+
         # Start hcxdumptool
         t = Thread(target=self.dumptool_thread)
         t.start()
@@ -311,13 +317,15 @@ class AttackPMKID(Attack):
 
     def dumptool_thread(self):
         """Runs hashcat's hcxdumptool until it dies or `keep_capturing == False`"""
-        dumptool = HcxDumpTool(self.target, self.pcapng_file)
-
-        # Let the dump tool run until we have the hash.
-        while self.keep_capturing and dumptool.poll() is None:
-            time.sleep(0.5)
-
-        dumptool.interrupt()
+        try:
+            with HcxDumpTool(self.target, self.pcapng_file) as dumptool:
+                # Let the dump tool run until we have the hash.
+                while self.keep_capturing and dumptool.poll() is None:
+                    time.sleep(0.5)
+        except Exception as e:
+            if Configuration.verbose > 0:
+                Color.pl(f'\n{{!}} {{R}}HcxDumpTool error{{W}}: {str(e)}')
+        # Context manager will handle cleanup automatically
 
     def save_pmkid(self, pmkid_hash):
         """Saves a copy of the pmkid (handshake) to hs/ directory."""

@@ -21,6 +21,8 @@ class Scanner(object):
         self.targets = []
         self.target = None  # Target specified by user (based on ESSID/BSSID)
         self.err_msg = None
+        self._max_targets = 1000  # Limit target list size to prevent memory bloat
+        self._cleanup_counter = 0  # Counter for periodic cleanup
 
     def find_targets(self):
         """
@@ -43,6 +45,16 @@ class Scanner(object):
 
                     self.targets = airodump.get_targets(old_targets=self.targets,
                                                         target_archives=self.target_archives)
+
+                    # Periodic memory cleanup
+                    self._cleanup_counter += 1
+                    if self._cleanup_counter % 10 == 0:  # Every 10 scans
+                        self._cleanup_memory()
+
+                    # Memory monitoring
+                    if self._cleanup_counter % 50 == 0:  # Every 50 scans
+                        from ..util.memory import MemoryMonitor
+                        MemoryMonitor.periodic_check(self._cleanup_counter)
 
                     if self.found_target():
                         return True  # We found the target we want
@@ -166,7 +178,7 @@ class Scanner(object):
         if Configuration.show_manufacturers:
             Color.p('           MANUFACTURER')
 
-        Color.pl('   CH  ENCR    PWR    WPS  CLIENT')
+        Color.pl('   CH  ENCR     PWR   WPS  CLIENT')
 
         # Second row: separator
         Color.p('   ---')
@@ -177,7 +189,7 @@ class Scanner(object):
         if Configuration.show_manufacturers:
             Color.p('  ---------------------')
 
-        Color.pl('  ---  -----   ----   ---  ------{W}')
+        Color.pl('  ---  -----    ----  ---  ------{W}')
 
         # Remaining rows: targets
         for idx, target in enumerate(self.targets, start=1):
@@ -230,6 +242,32 @@ class Scanner(object):
         if Configuration.scan_time > 0:
             return self.targets
 
+        # Ask user for targets if no automatic selection
+        return self._prompt_user_for_targets()
+
+    def _cleanup_memory(self):
+        """Periodic memory cleanup to prevent bloat during long scans"""
+        # Limit target list size
+        if len(self.targets) > self._max_targets:
+            # Keep only the strongest targets
+            self.targets.sort(key=lambda x: x.power, reverse=True)
+            self.targets = self.targets[:self._max_targets]
+
+        # Clean up old archived targets (keep only recent ones)
+        if len(self.target_archives) > 500:  # Limit archive size
+            # Remove oldest entries, keep newest 300
+            sorted_archives = sorted(self.target_archives.items(),
+                                   key=lambda x: getattr(x[1], 'last_seen', 0),
+                                   reverse=True)
+            self.target_archives = dict(sorted_archives[:300])
+
+        # Force garbage collection periodically
+        if self._cleanup_counter % 50 == 0:  # Every 50 cleanup cycles
+            import gc
+            gc.collect()
+
+    def _prompt_user_for_targets(self):
+        """Prompt user to select targets from the list"""
         # Ask user for targets.
         self.print_targets()
         Color.clear_entire_line()
@@ -274,8 +312,19 @@ if __name__ == '__main__':
         s = Scanner()
         s.find_targets()
         targets = s.select_targets()
+    except (OSError, IOError) as e:
+        Color.pl('\r {!} {R}Scanner I/O Error{W}: %s' % str(e))
+        Configuration.exit_gracefully()
+    except subprocess.CalledProcessError as e:
+        Color.pl('\r {!} {R}Scanner Command Failed{W}: %s' % str(e))
+        Configuration.exit_gracefully()
+    except ValueError as e:
+        Color.pl('\r {!} {R}Scanner Configuration Error{W}: %s' % str(e))
+        Configuration.exit_gracefully()
     except Exception as e:
-        Color.pl('\r {!} {R}Error{W}: %s' % str(e))
+        Color.pl('\r {!} {R}Unexpected Scanner Error{W}: %s' % str(e))
+        if Configuration.verbose > 0:
+            Color.pexception(e)
         Configuration.exit_gracefully()
     for t in targets:
         Color.pl('    {W}Selected: %s' % t)

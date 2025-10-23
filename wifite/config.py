@@ -12,7 +12,7 @@ class Configuration(object):
 
     initialized = False  # Flag indicating config has been initialized
     verbose = 0
-    version = '2.7.2'
+    version = '2.8.0'
 
     all_bands = None
     attack_max = None
@@ -649,8 +649,32 @@ class Configuration(object):
             return
         if os.path.exists(cls.temp_dir):
             for f in os.listdir(cls.temp_dir):
-                os.remove(cls.temp_dir + f)
-            os.rmdir(cls.temp_dir)
+                try:
+                    file_path = os.path.join(cls.temp_dir, f)
+                    os.remove(file_path)
+                except (OSError, IOError):
+                    pass  # Ignore errors during cleanup
+            try:
+                os.rmdir(cls.temp_dir)
+            except (OSError, IOError):
+                pass  # Ignore errors during cleanup
+
+    @classmethod
+    def cleanup_memory(cls):
+        """ Periodic memory cleanup during long operations """
+        # Clear command cache periodically
+        if hasattr(cls, 'existing_commands') and len(cls.existing_commands) > 100:
+            # Keep only the most recently used commands
+            cls.existing_commands = dict(list(cls.existing_commands.items())[-50:])
+
+        # Clean up processes and file descriptors
+        from .util.process import ProcessManager, Process
+        ProcessManager().cleanup_all()
+        Process.cleanup_zombies()
+
+        # Force garbage collection
+        import gc
+        gc.collect()
 
     @classmethod
     def exit_gracefully(cls):

@@ -98,9 +98,16 @@ class Bully(Attack, Dependency):
         while self.bully_proc.poll() is None:
             try:
                 self.target = self.wait_for_target(airodump)
+            except subprocess.CalledProcessError as e:
+                self.pattack('{R}Failed: {O}Bully command error: %s{W}' % e, newline=True)
+            except (OSError, IOError) as e:
+                self.pattack('{R}Failed: {O}System I/O error: %s{W}' % e, newline=True)
+            except ValueError as e:
+                self.pattack('{R}Failed: {O}Invalid target data: %s{W}' % e, newline=True)
             except Exception as e:
-                self.pattack('{R}Failed: {O}%s{W}' % e, newline=True)
-                Color.pexception(e)
+                self.pattack('{R}Failed: {O}Unexpected error: %s{W}' % e, newline=True)
+                if Configuration.verbose > 0:
+                    Color.pexception(e)
                 self.stop()
                 break
 

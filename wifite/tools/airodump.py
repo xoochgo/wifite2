@@ -32,6 +32,7 @@ class Airodump(Dependency):
             raise Exception('Wireless interface must be defined (-i)')
         self.interface = interface
         self.targets = []
+        self._target_cache_limit = 500  # Limit cached targets to prevent memory bloat
 
         if channel is None:
             channel = Configuration.target_channel
@@ -205,6 +206,10 @@ class Airodump(Dependency):
         # Sort by power
         new_targets.sort(key=lambda x: x.power, reverse=True)
 
+        # Limit target list size to prevent memory bloat
+        if len(new_targets) > self._target_cache_limit:
+            new_targets = new_targets[:self._target_cache_limit]
+
         self.targets = new_targets
         self.deauth_hidden_targets()
 
@@ -271,8 +276,12 @@ class Airodump(Dependency):
                     try:
                         target4 = Target(row)
                         targets2.append(target4)
+                    except (ValueError, IndexError) as e:
+                        print(f"Invalid target data format: {e}")
+                    except (AttributeError, TypeError) as e:
+                        print(f"Target data structure error: {e}")
                     except Exception as e:
-                        print(f"Error parsing target: {e}")
+                        print(f"Unexpected target parsing error: {e}")
                 continue
 
         return targets2

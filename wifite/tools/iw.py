@@ -44,3 +44,9 @@ class Iw(Dependency):
                     iface = ires.group().split("Interface")[-1][1:]
 
         return list(interfaces)
+
+    @classmethod
+    def is_monitor(cls, iface):
+        """Check if the given interface is in monitor mode"""
+        monitor_interfaces = cls.get_interfaces(mode='monitor')
+        return iface in monitor_interfaces

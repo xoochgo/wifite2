@@ -5,7 +5,6 @@ from .dependency import Dependency
 from ..config import Configuration
 from ..util.process import Process
 from ..util.color import Color
-
 import os
 
 hccapx_autoremove = False  # change this to True if you want the hccapx files to be automatically removed
@@ -32,8 +31,8 @@ class Hashcat(Dependency):
         hash_file = HcxPcapngTool.generate_hash_file(handshake_obj, target_is_wpa3_sae, show_command=show_command)
 
         key = None
-        hashcat_mode = '22001' if target_is_wpa3_sae else '2500'
-        file_type_msg = "WPA3-SAE hash" if target_is_wpa3_sae else "WPA/WPA2 hccapx"
+        hashcat_mode = '22001' if target_is_wpa3_sae else '22000'  # Use 22000 instead of deprecated 2500
+        file_type_msg = "WPA3-SAE hash" if target_is_wpa3_sae else "WPA/WPA2 hash"
 
         Color.pl(f"{{+}} {{C}}Attempting to crack {file_type_msg} using Hashcat mode {hashcat_mode}{{W}}")
 
@@ -53,9 +52,27 @@ class Hashcat(Dependency):
                 Color.pl(f'{{+}} {{D}}Running: {{W}}{{P}}{" ".join(command)}{{W}}')
             process = Process(command)
             stdout, stderr = process.get_output()
+
+            # Check for errors first
+            if 'No hashes loaded' in stdout or 'No hashes loaded' in stderr:
+                continue  # No valid hashes to crack
+
             if ':' not in stdout:
+                continue  # No cracked results
+
+            # Parse the key from hashcat output
+            # Expected format: hash:password
+            lines = stdout.strip().split('\n')
+            for line in lines:
+                if ':' in line and not line.startswith('The plugin') and 'hashcat.net' not in line:
+                    # Take the last part after the last colon as the password
+                    parts = line.split(':')
+                    if len(parts) >= 2:
+                        key = parts[-1].strip()
+                        if key and len(key) > 0:
+                            break
+            else:
                 continue
-            key = stdout.split(':', 5)[-1].strip()
             break
 
         return key
@@ -121,7 +138,14 @@ class HcxDumpTool(Dependency):
         return self.proc.poll()
 
     def interrupt(self):
-        self.proc.interrupt()
+        if hasattr(self, 'proc') and self.proc:
+            self.proc.interrupt()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.interrupt()
 
 
 class HcxPcapngTool(Dependency):
@@ -145,8 +169,8 @@ class HcxPcapngTool(Dependency):
             hash_file = Configuration.temp('generated.sae.22001')
             hcx_args = ['--sae-hccapx', hash_file] # hcxpcapngtool uses --sae-hccapx to output WPA3 SAE hashes
         else:
-            hash_file = Configuration.temp('generated.hccapx')
-            hcx_args = ['-o', hash_file]
+            hash_file = Configuration.temp('generated.22000')
+            hcx_args = ['-o', hash_file]  # For mode 22000, still use -o but different file extension
 
         if os.path.exists(hash_file):
             os.remove(hash_file)

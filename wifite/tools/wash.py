@@ -31,11 +31,22 @@ class Wash(Dependency):
         try:
             p.wait()
             lines = p.stdout()
+        except subprocess.CalledProcessError as e:
+            # Command execution failed
+            if Configuration.verbose > 0:
+                Color.pl('{!} {R}Wash command failed{W}: %s' % str(e))
+        except (OSError, IOError) as e:
+            # System or file errors
+            if Configuration.verbose > 0:
+                Color.pl('{!} {R}Wash I/O error{W}: %s' % str(e))
+        except KeyboardInterrupt:
+            raise  # Re-raise keyboard interrupts
         except Exception as e:
-            # Manually check for keyboard interrupt as only python 3.x throws
-            # exceptions for subprocess.wait()
+            # Other unexpected errors
             if isinstance(e, KeyboardInterrupt):
                 raise KeyboardInterrupt from e
+            if Configuration.verbose > 0:
+                Color.pl('{!} {R}Wash unexpected error{W}: %s' % str(e))
 
             # Failure is acceptable
             return

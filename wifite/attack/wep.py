@@ -243,7 +243,18 @@ class AttackWEP(Attack):
                     self.success = False
                     return self.success
 
+            except (OSError, IOError) as e:
+                Color.pl('\r {!} {R}File System Error{W}: %s' % str(e))
+                continue
+            except subprocess.CalledProcessError as e:
+                Color.pl('\r {!} {R}WEP Tool Failed{W}: %s' % str(e))
+                continue
+            except ValueError as e:
+                Color.pl('\r {!} {R}Invalid WEP Configuration{W}: %s' % str(e))
+                continue
             except Exception as e:
+                # Log unexpected errors with full trace for WEP debugging
+                Color.pl('\r {!} {R}Unexpected WEP Error{W}: %s' % str(e))
                 Color.pexception(e)
                 continue
                 # End of big try-catch

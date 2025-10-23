@@ -149,6 +149,16 @@ class AttackWPA(Attack):
 
                 # Copy .cap file to temp for consistency
                 temp_file = Configuration.temp('handshake.cap.bak')
+
+                # Check file size before copying to prevent memory issues
+                try:
+                    file_size = os.path.getsize(cap_file)
+                    max_cap_size = 50 * 1024 * 1024  # 50MB limit
+                    if file_size > max_cap_size:
+                        Color.pl('\n{!} {O}Warning: Capture file is large (%d MB), may cause memory issues{W}' % (file_size // (1024*1024)))
+                except (OSError, IOError):
+                    pass
+
                 copy(cap_file, temp_file)
 
                 # Check cap file in temp for Handshake

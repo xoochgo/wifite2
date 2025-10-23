@@ -16,6 +16,8 @@ class Tshark(Dependency):
     def __init__(self):
         pass
 
+
+
     @staticmethod
     def _extract_src_dst_index_total(line):
         # Extract BSSIDs, handshake # (1-4) and handshake 'total' (4)

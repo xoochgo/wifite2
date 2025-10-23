@@ -228,8 +228,12 @@ class Airmon(Dependency):
                             # Process(['echo', '0', '>', con_mode_path], shell=True) # Optional: revert
                     except subprocess.CalledProcessError as e:
                         Color.pl('{R}failed (ICNSS2 specific command error: %s). Trying other methods...{W}' % e.stderr.decode().strip())
+                    except (OSError, IOError) as e:
+                        Color.pl('{R}failed (ICNSS2 I/O error: %s). Trying other methods...{W}' % str(e))
+                    except ValueError as e:
+                        Color.pl('{R}failed (ICNSS2 config error: %s). Trying other methods...{W}' % str(e))
                     except Exception as e:
-                        Color.pl('{R}failed (ICNSS2 specific error: %s). Trying other methods...{W}' % str(e))
+                        Color.pl('{R}failed (ICNSS2 unexpected error: %s). Trying other methods...{W}' % str(e))
                 else:
                     Color.pl('{O}con_mode path not found for ICNSS2. Trying other methods...{W}')
 
@@ -240,6 +244,15 @@ class Airmon(Dependency):
             Color.p('{+} Enabling {G}monitor mode{W} on {C}%s{W}... ' % iface_name)
             airmon_output = Process(['airmon-ng', 'start', iface_name]).stdout()
             enabled_interface = Airmon._parse_airmon_start(airmon_output)
+            # Debug: print what we got
+            print(f"\nDEBUG: Full airmon_output = {repr(airmon_output)}")
+            print(f"DEBUG: enabled_interface = {repr(enabled_interface)}")
+
+            # Debug the parsing step by step
+            lines = airmon_output.split('\n')
+            for i, line in enumerate(lines):
+                if 'mac80211 monitor mode' in line:
+                    print(f"DEBUG: Found monitor mode line {i}: {repr(line)}")
         else:
             enabled_interface = None
 
@@ -276,14 +289,26 @@ class Airmon(Dependency):
     @staticmethod
     def _parse_airmon_start(airmon_output):
         """Find the interface put into monitor mode (if any)"""
-        # airmon-ng output: (mac80211 monitor mode vif enabled for [phy10]wlan0 on [phy10]wlan0mon)
-        enabled_re = re.compile(r'.*\(mac80211 monitor mode (?:vif )?enabled (?:for [^ ]+ )?on (?:\[\w+])?(\w+)\)?.*')
+        # airmon-ng output examples:
+        # (mac80211 monitor mode vif enabled for [phy10]wlan0 on [phy10]wlan0mon)
+        # (mac80211 monitor mode already enabled for [phy0]wlxd037456283c3 on [phy0]10)
+
+        # Try to match from the "on" part first - this is the actual monitor interface
+        enabled_on_re = re.compile(r'.*\(mac80211 monitor mode (?:(?:vif )?enabled|already enabled) (?:for [^ ]+ )?on (?:\[\w+])?([a-zA-Z]\w+)\)?.*')
+
+        # Fallback: try to match from the "for" part if "on" part is just numbers (channel)
+        enabled_for_re = re.compile(r'.*\(mac80211 monitor mode (?:(?:vif )?enabled|already enabled) for (?:\[\w+])?(\w+).*on (?:\[\w+])?\d+\)?.*')
         lines = airmon_output.split('\n')
 
         for index, line in enumerate(lines):
-            if matches := enabled_re.match(line):
+            # First try to get interface from "on" part if it looks like an interface name
+            if matches := enabled_on_re.match(line):
                 return matches.group(1)
-            if "monitor mode enabled" in line:
+            # Fallback to "for" part if "on" part is just a channel number
+            elif matches := enabled_for_re.match(line):
+                return matches.group(1)
+            # Legacy fallback
+            elif "monitor mode enabled" in line:
                 return line.split()[-1]
 
         return None

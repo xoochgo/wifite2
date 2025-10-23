@@ -67,9 +67,18 @@ class Reaver(Attack, Dependency):
         """ Returns True if attack is successful. """
         try:
             self._run()  # Run-loop
+        except subprocess.CalledProcessError as e:
+            # Reaver command failed
+            self.pattack('{R}Failed:{O} Reaver command error: %s' % str(e), newline=True)
+        except (OSError, IOError) as e:
+            # System or file errors
+            self.pattack('{R}Failed:{O} System error: %s' % str(e), newline=True)
+        except ValueError as e:
+            # Invalid configuration or data
+            self.pattack('{R}Failed:{O} Configuration error: %s' % str(e), newline=True)
         except Exception as e:
-            # Failed with error
-            self.pattack('{R}Failed:{O} %s' % str(e), newline=True)
+            # Unexpected errors
+            self.pattack('{R}Failed:{O} Unexpected error: %s' % str(e), newline=True)
             return self.crack_result is not None
 
         # Stop reaver if it's still running

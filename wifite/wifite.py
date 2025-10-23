@@ -44,7 +44,7 @@ class Wifite(object):
         from .model.handshake import Handshake
         from .util.crack import CrackHelper
         from .util.dbupdater import DBUpdater
-        
+
         if Configuration.show_cracked:
             CrackResult.display('cracked')
 
@@ -56,9 +56,8 @@ class Wifite(object):
 
         elif Configuration.crack_handshake:
             CrackHelper.run()
-            
+
         elif Configuration.update_db:
-            
             DBUpdater.run()
 
         else:
@@ -110,16 +109,34 @@ def main():
     try:
         wifite = Wifite()
         wifite.start()
-    except Exception as e2:
-        Color.pexception(e2)
+    except (OSError, IOError) as e:
+        Color.pl('\n{!} {R}System Error{W}: %s' % str(e))
         Color.pl('\n{!} {R}Exiting{W}\n')
-
+    except subprocess.CalledProcessError as e:
+        Color.pl('\n{!} {R}Command Failed{W}: %s' % str(e))
+        Color.pl('\n{!} {R}Exiting{W}\n')
+    except PermissionError as e:
+        Color.pl('\n{!} {R}Permission Error{W}: %s' % str(e))
+        Color.pl('\n{!} {R}Try running with sudo{W}\n')
     except KeyboardInterrupt:
         Color.pl('\n{!} {O}Interrupted, Shutting down...{W}')
+    except Exception as e:
+        Color.pl('\n{!} {R}Unexpected Error{W}: %s' % str(e))
+        Color.pexception(e)
+        Color.pl('\n{!} {R}Exiting{W}\n')
 
-    # Delete Reaver .pcap
-    subprocess.run(["rm", "reaver_output.pcap"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    Configuration.exit_gracefully()
+    finally:
+        # Ensure all processes are cleaned up
+        from .util.process import ProcessManager
+        ProcessManager().cleanup_all()
+
+        # Delete Reaver .pcap
+        try:
+            subprocess.run(["rm", "reaver_output.pcap"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except:
+            pass  # Ignore if file doesn't exist
+
+        Configuration.exit_gracefully()
 
 
 if __name__ == '__main__':

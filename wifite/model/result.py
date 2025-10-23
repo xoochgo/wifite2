@@ -47,8 +47,12 @@ class CrackResult(object):
                 text = fid.read()
             try:
                 saved_results = loads(text)
+            except (ValueError, TypeError) as e:
+                Color.pl('{!} JSON parsing error in %s: %s' % (name, str(e)))
+            except (OSError, IOError) as e:
+                Color.pl('{!} File access error for %s: %s' % (name, str(e)))
             except Exception as e:
-                Color.pl('{!} error while loading %s: %s' % (name, str(e)))
+                Color.pl('{!} Unexpected error loading %s: %s' % (name, str(e)))
 
         # Check for duplicates
         this_dict = self.to_dict()
