@@ -34,10 +34,24 @@ class TestHandshake(unittest.TestCase):
         print("\nTesting handshake with tshark...")
         hs_file = self.getFile("handshake_exists.cap")
         print("Testing file:", hs_file)
-        hs = Handshake(hs_file, bssid='A4:2B:8C:16:6B:3A')
-        handshakes = hs.tshark_handshakes()
-        print(f"Found {len(handshakes)} handshake(s): {handshakes}")
-        assert len(handshakes) > 0, f'Expected len>0 but got len({len(handshakes)})'
+
+        # Copy file to /tmp to work around tshark permission issues
+        import tempfile
+        import shutil
+        import os
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.cap') as tmp:
+            temp_file = tmp.name
+
+        try:
+            shutil.copy2(hs_file, temp_file)
+            hs = Handshake(temp_file, bssid='A4:2B:8C:16:6B:3A')
+            handshakes = hs.tshark_handshakes()
+            print(f"Found {len(handshakes)} handshake(s): {handshakes}")
+            assert len(handshakes) > 0, f'Expected len>0 but got len({len(handshakes)})'
+        finally:
+            if os.path.exists(temp_file):
+                os.unlink(temp_file)
 
     @unittest.skipUnless(Process.exists("cowpatty"), 'cowpatty is missing')
     def testHandshakeCowpatty(self):
