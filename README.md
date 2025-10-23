@@ -85,6 +85,7 @@ Second, only the latest versions of these programs are supported and must be ins
    * [`hcxdumptool`](https://github.com/ZerBea/hcxdumptool): For capturing PMKID hashes.
    * [`hcxpcapngtool`](https://github.com/ZerBea/hcxtools): For converting PMKID packet captures into `hashcat`'s format.
 * [`macchanger`](https://github.com/alobbs/macchanger): For randomizing MAC addresses to avoid detection and improve anonymity.
+* [`pixiewps`](https://github.com/wiire-a/pixiewps): For WPS Pixie-Dust attacks (alternative implementation).
 
 
 
