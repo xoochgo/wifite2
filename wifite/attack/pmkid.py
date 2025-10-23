@@ -12,6 +12,7 @@ from threading import Thread, active_count
 import os
 import time
 import re
+import glob
 from shutil import copy
 
 
@@ -28,31 +29,67 @@ class AttackPMKID(Attack):
     @staticmethod
     def get_existing_pmkid_file(bssid):
         """
-        Load PMKID Hash from a previously-captured hash in ./hs/
-        Returns:
-            The hashcat hash (hash*bssid*station*essid) if found.
-            None if not found.
+        Returns existing PMKID hash file for the given BSSID.
+        Returns None if no PMKID hash file exists for the given BSSID.
         """
         if not os.path.exists(Configuration.wpa_handshake_dir):
             return None
 
         bssid = bssid.lower().replace(':', '')
 
-        file_re = re.compile(r'.*pmkid_.*\.22000')
-        for filename in os.listdir(Configuration.wpa_handshake_dir):
-            pmkid_filename = os.path.join(Configuration.wpa_handshake_dir, filename)
+        if Configuration.verbose > 1:
+            Color.pl('{+} {D}Looking for existing PMKID for BSSID: {C}%s{W}' % bssid)
+
+        # Use glob pattern for better file matching
+        pmkid_pattern = os.path.join(Configuration.wpa_handshake_dir, 'pmkid_*.22000')
+        for pmkid_filename in glob.glob(pmkid_pattern):
             if not os.path.isfile(pmkid_filename):
                 continue
-            if not re.match(file_re, pmkid_filename):
+
+            try:
+                with open(pmkid_filename, 'r') as pmkid_handle:
+                    pmkid_hash = pmkid_handle.read().strip()
+
+                    if Configuration.verbose > 2:
+                        Color.pl('{+} {D}Checking file {C}%s{W}: {C}%s{W}' % (os.path.basename(pmkid_filename), pmkid_hash[:50] + '...'))
+
+                    # Validate hash format before parsing
+                    if not pmkid_hash or not pmkid_hash.startswith('WPA*'):
+                        if Configuration.verbose > 2:
+                            Color.pl('{+} {D}SKIP: Invalid hash format in {C}%s{W}' % os.path.basename(pmkid_filename))
+                        continue
+
+                    # Split hash and validate sufficient fields
+                    hash_fields = pmkid_hash.split('*')
+                    if len(hash_fields) < 4:
+                        if Configuration.verbose > 2:
+                            Color.pl('{+} {D}SKIP: Insufficient fields in {C}%s{W} (got %d, need 4+)' % (os.path.basename(pmkid_filename), len(hash_fields)))
+                        continue
+
+                    # Extract BSSID from correct field (index 3, not 1)
+                    existing_bssid = hash_fields[3].lower().replace(':', '')
+
+                    # Validate extracted BSSID format
+                    if len(existing_bssid) != 12 or not all(c in '0123456789abcdef' for c in existing_bssid):
+                        if Configuration.verbose > 2:
+                            Color.pl('{+} {D}SKIP: Invalid BSSID format in {C}%s{W}: {C}%s{W}' % (os.path.basename(pmkid_filename), existing_bssid))
+                        continue
+
+                    if Configuration.verbose > 2:
+                        Color.pl('{+} {D}Extracted BSSID: {C}%s{W} vs target: {C}%s{W}' % (existing_bssid, bssid))
+
+                    if existing_bssid == bssid:
+                        if Configuration.verbose > 1:
+                            Color.pl('{+} {G}Found matching PMKID file: {C}%s{W}' % os.path.basename(pmkid_filename))
+                        return pmkid_filename
+
+            except (IOError, OSError) as e:
+                if Configuration.verbose > 2:
+                    Color.pl('{+} {R}ERROR reading {C}%s{W}: %s' % (os.path.basename(pmkid_filename), str(e)))
                 continue
 
-            with open(pmkid_filename, 'r') as pmkid_handle:
-                pmkid_hash = pmkid_handle.read().strip()
-                if pmkid_hash.count('*') < 3:
-                    continue
-                existing_bssid = pmkid_hash.split('*')[1].lower().replace(':', '')
-                if existing_bssid == bssid:
-                    return pmkid_filename
+        if Configuration.verbose > 1:
+            Color.pl('{+} {D}No existing PMKID found for BSSID: {C}%s{W}' % bssid)
         return None
 
     def run_hashcat(self):
@@ -83,11 +120,15 @@ class AttackPMKID(Attack):
         pmkid_file = None
 
         if not Configuration.ignore_old_handshakes:
-            # Load exisitng PMKID hash from filesystem
-            pmkid_file = self.get_existing_pmkid_file(self.target.bssid)
+            # Load existing PMKID hash from filesystem
+            if Configuration.verbose > 1:
+                Color.pl('{+} {D}Checking for existing PMKID for BSSID: {C}%s{W}' % self.target.bssid)
+            pmkid_file = AttackPMKID.get_existing_pmkid_file(self.target.bssid)
             if pmkid_file is not None:
                 Color.pattack('PMKID', self.target, 'CAPTURE',
-                              'Loaded {C}existing{W} PMKID hash: {C}%s{W}\n' % pmkid_file)
+                              'Using {C}existing{W} PMKID hash: {C}%s{W}' % os.path.basename(pmkid_file))
+            elif Configuration.verbose > 1:
+                Color.pl('{+} {D}No existing PMKID found, will capture new one{W}')
 
         if pmkid_file is None:
             # Capture hash from live target.
