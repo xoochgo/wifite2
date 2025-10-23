@@ -84,6 +84,7 @@ Second, only the latest versions of these programs are supported and must be ins
 * [`hashcat`](https://hashcat.net/): For cracking PMKID hashes.
    * [`hcxdumptool`](https://github.com/ZerBea/hcxdumptool): For capturing PMKID hashes.
    * [`hcxpcapngtool`](https://github.com/ZerBea/hcxtools): For converting PMKID packet captures into `hashcat`'s format.
+* [`macchanger`](https://github.com/alobbs/macchanger): For randomizing MAC addresses to avoid detection and improve anonymity.
 
 
 
