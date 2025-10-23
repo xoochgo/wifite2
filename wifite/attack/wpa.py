@@ -85,7 +85,7 @@ class AttackWPA(Attack):
             key = None
 
         if key is None:
-            Color.pl(f"[!] Failed to crack handshake: {Configuration.wordlist.split(os.sep)[-1] if Configuration.wordlist else 'Wordlist'} did not contain password")
+            Color.pl(f"{{!}} {{R}}Failed to crack handshake:{{W}} {Configuration.wordlist.split(os.sep)[-1] if Configuration.wordlist else 'Wordlist'} did not contain password")
             self.success = False
         else:
             Color.pl(f"[+] Cracked {'WPA3-SAE' if target_is_wpa3_sae else 'WPA/WPA2'} Handshake Key: {key}\n")
