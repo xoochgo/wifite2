@@ -96,7 +96,12 @@ class Scanner(object):
         self.print_targets()
         Color.clear_entire_line()
         Color.p(prompt)
-        answer = input().lower()
+        try:
+            answer = input().lower()
+        except KeyboardInterrupt:
+            # If user presses Ctrl+C during input, default to exit
+            Color.pl('\n{!} {O}Interrupted during input, exiting...{W}')
+            return False  # Exit
 
         return not answer.startswith('e')
 
@@ -283,7 +288,14 @@ class Scanner(object):
         chosen_targets = []
 
         Color.p(input_str)
-        for choice in input().split(','):
+        try:
+            user_input = input()
+        except KeyboardInterrupt:
+            # If user presses Ctrl+C during input, return empty list to exit
+            Color.pl('\n{!} {O}Interrupted during target selection, exiting...{W}')
+            return []
+
+        for choice in user_input.split(','):
             choice = choice.strip()
             if choice.lower() == 'all':
                 chosen_targets = self.targets

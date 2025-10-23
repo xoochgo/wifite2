@@ -7,6 +7,7 @@ import signal
 import os
 import atexit
 import threading
+import subprocess
 from subprocess import Popen, PIPE
 from ..util.color import Color
 from ..config import Configuration
@@ -213,9 +214,18 @@ class Process(object):
     def get_output(self):
         """ Waits for process to finish, sets stdout & stderr """
         if self.pid.poll() is None:
-            self.pid.wait()
+            try:
+                self.pid.wait(timeout=30)  # 30 second timeout
+            except subprocess.TimeoutExpired:
+                # Force kill if process doesn't finish in time
+                self.force_kill()
         if self.out is None:
-            (self.out, self.err) = self.pid.communicate()
+            try:
+                (self.out, self.err) = self.pid.communicate(timeout=10)  # 10 second timeout
+            except subprocess.TimeoutExpired:
+                # Force kill and get partial output
+                self.force_kill()
+                (self.out, self.err) = self.pid.communicate()
 
         if type(self.out) is bytes:
             self.out = self.out.decode('utf-8')

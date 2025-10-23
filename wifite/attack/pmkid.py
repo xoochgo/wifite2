@@ -136,7 +136,11 @@ class AttackPMKID(Attack):
 
             Color.clear_entire_line()
             Color.pattack('WPA', self.target, 'PMKID capture', 'Waiting for target to appear...')
-            airodump_target = self.wait_for_target(airodump)
+            try:
+                airodump_target = self.wait_for_target(airodump)
+            except Exception as e:
+                Color.pl('\n{!} {R}Target timeout:{W} %s' % str(e))
+                return None
 
             # # Try to load existing handshake
             # if Configuration.ignore_old_handshakes == False:
@@ -286,8 +290,7 @@ class AttackPMKID(Attack):
         if Configuration.wordlist is None:
             Color.pl('\n{!} {O}Not cracking PMKID because there is no {R}wordlist{O} (re-run with {C}--dict{O})')
 
-            # TODO: Uncomment once --crack is updated to support recracking PMKIDs.
-            # Color.pl('{!} {O}Run Wifite with the {R}--crack{O} and {R}--dict{O} options to try again.')
+            Color.pl('{!} {O}Run Wifite with the {R}--crack{O} and {R}--dict{O} options to try again.')
 
             key = None
         else:

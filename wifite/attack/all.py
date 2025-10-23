@@ -223,7 +223,12 @@ class AttackAll(object):
             prompt += ' or {R}exit{W} %s? {C}' % options
 
         Color.p(prompt)
-        answer = input().lower()
+        try:
+            answer = input().lower()
+        except KeyboardInterrupt:
+            # If user presses Ctrl+C during input, default to exit
+            Color.pl('\n{!} {O}Interrupted during input, exiting...{W}')
+            return Answer.ExitOrReturn
 
         if answer.startswith('s'):
             return Answer.Skip

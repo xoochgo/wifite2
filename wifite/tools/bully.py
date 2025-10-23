@@ -73,7 +73,11 @@ class Bully(Attack, Dependency):
                       output_file_prefix='wps_pin') as airodump:
             # Wait for target
             self.pattack('Waiting for target to appear...')
-            self.target = self.wait_for_target(airodump)
+            try:
+                self.target = self.wait_for_target(airodump)
+            except Exception as e:
+                self.pattack('{R}Failed: {O}Target timeout: %s{W}' % str(e), newline=True)
+                return self.crack_result is not None
 
             # Start bully
             self.bully_proc = Process(self.cmd,

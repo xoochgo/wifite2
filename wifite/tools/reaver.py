@@ -101,7 +101,11 @@ class Reaver(Attack, Dependency):
 
             # Wait for target
             self.pattack('Waiting for target to appear...')
-            self.target = self.wait_for_target(airodump)
+            try:
+                self.target = self.wait_for_target(airodump)
+            except Exception as e:
+                self.pattack('{R}Failed: {O}Target timeout: %s{W}' % str(e), newline=True)
+                return self.crack_result is not None
 
             # Start reaver
             self.reaver_proc = Process(self.reaver_cmd,
@@ -115,7 +119,11 @@ class Reaver(Attack, Dependency):
             while self.crack_result is None and self.reaver_proc.poll() is None:
 
                 # Refresh target information (power)
-                self.target = self.wait_for_target(airodump)
+                try:
+                    self.target = self.wait_for_target(airodump)
+                except Exception as e:
+                    self.pattack('{R}Failed: {O}Target timeout: %s{W}' % str(e), newline=True)
+                    break
 
                 # Update based on reaver output
                 stdout = self.get_output()

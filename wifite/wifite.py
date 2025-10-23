@@ -85,10 +85,12 @@ class Wifite(object):
 
         Color.pl('')
 
-        # Scan
+        # Scan (no signal handler during scanning to allow proper target selection)
         s = Scanner()
         do_continue = s.find_targets()
         targets = s.select_targets()
+
+        # Attack modules handle KeyboardInterrupt properly, no global handler needed
 
         if Configuration.infinite_mode:
             while do_continue:
@@ -105,6 +107,14 @@ class Wifite(object):
         Color.pl('{+} Finished attacking {C}%d{W} target(s), exiting' % attacked_targets)
 
 
+
+
+def force_exit_handler(signum, frame):
+    """Force exit on multiple Ctrl+C during cleanup"""
+    import sys
+    print('\n[!] Force exiting...')
+    sys.exit(1)
+
 def main():
     try:
         wifite = Wifite()
@@ -120,23 +130,66 @@ def main():
         Color.pl('\n{!} {R}Try running with sudo{W}\n')
     except KeyboardInterrupt:
         Color.pl('\n{!} {O}Interrupted, Shutting down...{W}')
+        # Set up force exit handler for cleanup phase
+        import signal
+        signal.signal(signal.SIGINT, force_exit_handler)
     except Exception as e:
         Color.pl('\n{!} {R}Unexpected Error{W}: %s' % str(e))
         Color.pexception(e)
         Color.pl('\n{!} {R}Exiting{W}\n')
 
     finally:
-        # Ensure all processes are cleaned up
-        from .util.process import ProcessManager
-        ProcessManager().cleanup_all()
+        # Set up aggressive force exit handler during cleanup
+        import signal
+        import sys
 
-        # Delete Reaver .pcap
+        def emergency_exit(signum, frame):
+            print('\n[!] Emergency exit!')
+            # Disable atexit callbacks and suppress stderr to prevent ugly exception messages
+            import atexit
+            import os
+            atexit._clear()
+            # Redirect stderr to devnull to hide any remaining cleanup exceptions
+            os.dup2(os.open(os.devnull, os.O_WRONLY), 2)
+            sys.exit(1)
+
+        signal.signal(signal.SIGINT, emergency_exit)
+
+        # Quick cleanup with short timeouts
         try:
-            subprocess.run(["rm", "reaver_output.pcap"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except:
-            pass  # Ignore if file doesn't exist
+            from .util.process import ProcessManager
+            import threading
 
-        Configuration.exit_gracefully()
+            # Run cleanup in thread with timeout
+            cleanup_thread = threading.Thread(target=ProcessManager().cleanup_all)
+            cleanup_thread.daemon = True
+            cleanup_thread.start()
+            cleanup_thread.join(timeout=3)  # 3 second timeout
+        except:
+            pass  # Ignore cleanup errors
+
+        # Delete Reaver .pcap quickly
+        try:
+            subprocess.run(["rm", "-f", "reaver_output.pcap"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
+        except:
+            pass
+
+        # Try graceful exit with timeout
+        try:
+            import threading
+
+            def graceful_exit():
+                Configuration.exit_gracefully()
+
+            exit_thread = threading.Thread(target=graceful_exit)
+            exit_thread.daemon = True
+            exit_thread.start()
+            exit_thread.join(timeout=2)  # 2 second timeout
+        except:
+            pass
+
+        # Force exit regardless
+        sys.exit(0)
 
 
 if __name__ == '__main__':

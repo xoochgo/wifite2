@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from ..model.attack import Attack
-from ..tools.aircrack import Aircrack # Still used for other things like WEP
+from ..tools.aircrack import Aircrack
 from ..tools.hashcat import Hashcat
 from ..tools.airodump import Airodump
 from ..tools.aireplay import Aireplay
@@ -72,7 +72,7 @@ class AttackWPA(Attack):
         cracker = "Hashcat" # Default to Hashcat
         # TODO: Potentially add a fallback or user choice for aircrack-ng for non-SAE?
         # For now, transitioning WPA/WPA2 cracking to Hashcat as well for consistency,
-        # as Hashcat mode 2500 (hccapx) is generally preferred over aircrack-ng.
+        # as Hashcat mode 22000 (hccapx) is generally preferred over aircrack-ng.
         # Aircrack.crack_handshake might be removed or kept for WEP only in future.
 
         Color.pl(f'\n{{+}} {{C}}Cracking {"WPA3-SAE" if target_is_wpa3_sae else "WPA/WPA2"} Handshake:{{W}} Running {{C}}{cracker}{{W}} with '
@@ -112,7 +112,11 @@ class AttackWPA(Attack):
 
             Color.clear_entire_line()
             Color.pattack('WPA', self.target, 'Handshake capture', 'Waiting for target to appear...')
-            airodump_target = self.wait_for_target(airodump)
+            try:
+                airodump_target = self.wait_for_target(airodump)
+            except Exception as e:
+                Color.pl('\n{!} {R}Target timeout:{W} %s' % str(e))
+                return None
 
             self.clients = []
 
@@ -181,7 +185,11 @@ class AttackWPA(Attack):
                 os.remove(temp_file)
 
                 # Look for new clients
-                airodump_target = self.wait_for_target(airodump)
+                try:
+                    airodump_target = self.wait_for_target(airodump)
+                except Exception as e:
+                    Color.pl('\n{!} {R}Target timeout:{W} %s' % str(e))
+                    break  # Exit the capture loop
                 for client in airodump_target.clients:
                     if client.station not in self.clients:
                         Color.clear_entire_line()
