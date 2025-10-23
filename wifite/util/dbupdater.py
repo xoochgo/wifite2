@@ -27,7 +27,6 @@ class DBUpdater:
 
     @classmethod
     def run(cls):
-        
         Configuration.initialize(False)
 
         filename = Configuration.db_filename
@@ -35,7 +34,6 @@ class DBUpdater:
 
         if os.path.exists(filename):
             up_to_date, last_updated = cls.is_up_to_date(filename)
-            
             if up_to_date:
                 Color.pl('{+} {G}Database is up to date ({C}%s{G}). Last update date: {C}%s{W}' % (filename, last_updated))
                 return
@@ -68,8 +66,7 @@ class DBUpdater:
                 except Exception as e:
                     print(f"Error processing {key}: {e}", file=sys.stderr)
         return written_total
-    
-    
+
     @classmethod
     def fetch_csv(cls, url: str, verbose: bool = False) -> str:
         """Download CSV content (boilerplate; uses requests)."""
@@ -102,7 +99,6 @@ class DBUpdater:
         return count
 
     def is_up_to_date(filename: str) -> bool:
-        
         mtime = os.path.getmtime(filename)
         last_update = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
         age_seconds = datetime.now().timestamp() - mtime
