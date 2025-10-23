@@ -1,4 +1,4 @@
-[![GitHub version](https://img.shields.io/badge/version-2.7.2-informational.svg)](#)
+[![GitHub version](https://img.shields.io/badge/version-2.8.0-informational.svg)](#)
 [![GitHub issues](https://img.shields.io/github/issues/kimocoder/wifite2.svg)](https://github.com/kimocoder/wifite2/issues)
 [![GitHub forks](https://img.shields.io/github/forks/kimocoder/wifite2.svg)](https://github.com/kimocoder/wifite2/network)
 [![GitHub stars](https://img.shields.io/github/stars/kimocoder/wifite2.svg)](https://github.com/kimocoder/wifite2/stargazers)
@@ -27,15 +27,30 @@ Run wifite, select your targets, and Wifite will automatically start trying to c
 
 Supported Operating Systems
 ---------------------------
-Wifite is designed specifically for the latest version of [**Kali** Linux](https://www.kali.org/). [ParrotSec](https://www.parrotsec.org/) is also supported.
 
-NetHunter (Android) is also widely supported by wifite, but it will require a custom kernel with modules support and various
-patches for injection in order to work. Tested on Android 10 (Q), Android 11 (R),  Android 12 (S) and Android 13 (T)
+### Fully Supported ✅
+* **[Kali Linux](https://www.kali.org/)** - Primary development platform (latest version recommended)
+* **[ParrotSec](https://www.parrotsec.org/)** - Well-tested and supported
+* **[BlackArch](https://blackarch.org/)** - Compatible with latest tool versions
 
-More information regarding [ Android: **NetHunter** ](https://gitlab.com/kalilinux/nethunter) is found there and
-you should also take a look at the [ **NetHunter WIKI** ](https://www.kali.org/docs/nethunter/) which is more up to date then [ NetHunter.com ](https://nethunter.com).
+### Mobile Support 📱
+* **Kali NetHunter (Android)** - Requires custom kernel with monitor mode support
+  * Tested on Android 10 (Q), 11 (R), 12 (S), and 13 (T)
+  * Requires compatible wireless adapter and proper drivers
+  * See [NetHunter Documentation](https://www.kali.org/docs/nethunter/) for setup
 
-Other pen-testing distributions (such as BackBox or Ubuntu) have outdated versions of the tools used by Wifite. Do not expect support unless you are using the latest versions of the *Required Tools*, and also [patched wireless drivers that support injection]().
+### Partially Supported ⚠️
+* **Ubuntu/Debian** - May work with manual tool installation and updated drivers
+* **Arch Linux** - Compatible with AUR packages and proper wireless drivers
+* **Other Linux distributions** - Requires latest versions of all dependencies
+
+### Requirements for All Platforms
+* **Python 3.8+** (Python 3.11+ recommended)
+* **Wireless adapter with monitor mode support**
+* **Root/sudo access** for network interface manipulation
+* **Latest versions of required tools** (see Required Tools section)
+
+**Note:** Other penetration testing distributions may have outdated tool versions. Ensure you have the latest versions of aircrack-ng, hashcat, and related tools for best compatibility.
 
 Required Tools
 --------------
@@ -72,60 +87,126 @@ Second, only the latest versions of these programs are supported and must be ins
 
 
 
-Install dependencies
---------------------
-Either, do it the proper python way with
+Installation
+------------
 
-```sh
-$ python3 -m venv venv
-$ source venv/bin/activate
-$ pip3 install -r requirements.txt
-```
+### Quick Install (Recommended)
 
-## Install Wifite
+For most users on Kali Linux or similar distributions:
 
-To install Wifite, run:
-
-```sh
+```bash
+# Clone the repository
 git clone https://github.com/kimocoder/wifite2.git
 cd wifite2
+
+# Install system-wide
 sudo python3 setup.py install
-```
 
-## Run Wifite
-
-To run Wifite, simply execute:
-
-```sh
+# Run wifite
 sudo wifite
 ```
 
+### Development Install
+
+For development or if you want to modify wifite:
+
+```bash
+# Clone and enter directory
+git clone https://github.com/kimocoder/wifite2.git
+cd wifite2
+
+# Create virtual environment (optional but recommended)
+python3 -m venv venv
+source venv/bin/activate
+
+# Install dependencies
+pip3 install -r requirements.txt
+
+# Run directly from source
+sudo python3 wifite.py
+```
+
+### Package Manager Install
+
+On some distributions, wifite2 may be available through package managers:
+
+```bash
+# Kali Linux / Debian
+sudo apt update && sudo apt install wifite
+
+# Arch Linux (AUR)
+yay -S wifite2-git
+```
+
+### Verify Installation
+
+After installation, verify all dependencies are available:
+
+```bash
+sudo wifite --help
+```
+
+This will show if any required tools are missing.
 
 
-Brief Feature List
-------------------
-* [PMKID hash capture](https://hashcat.net/forum/thread-7717.html) (enabled by-default, force with: `--pmkid`)
-* WPS Offline Brute-Force Attack aka "Pixie-Dust". (enabled by-default, force with: `--wps-only --pixie`)
-* WPS Online Brute-Force Attack aka "PIN attack". (enabled by-default, force with: `--wps-only --no-pixie`)
-* WPA/2 Offline Brute-Force Attack via 4-Way Handshake capture (enabled by-default, force with: `--no-wps`)
-* Validates handshakes against `tshark`, `cowpatty`, and `aircrack-ng` (when available)
-* Various WEP attacks (replay, chopchop, fragment, hirte, p0841, caffe-latte)
-* Automatically decloaks hidden access points while scanning or attacking.
-   * Note: Only works when channel is fixed. Use `-c <channel>`
-   * Disable this using `--no-deauths`
-* 5Ghz support for some wireless cards (via `-5` switch).
-   * Note: Some tools don't play well on 5GHz channels (e.g. `aireplay-ng`)
-* Stores cracked passwords and handshakes to the current directory (`--cracked`)
-   * Includes information about the cracked access point (Name, BSSID, Date, etc).
-* Easy to try to crack handshakes or PMKID hashes against a wordlist (`--crack`)
 
-TIP! Use `wifite.py -h -v` for a collection of switches and settings
-for your own customization, automation, timers and so on ..
+Features
+--------
 
-What's new?
------------
-Comparing this repo to the "old wifite" @ https://github.com/derv82/wifite
+### Attack Methods
+* **[PMKID hash capture](https://hashcat.net/forum/thread-7717.html)** - Fast, clientless WPA/WPA2 attack (enabled by default)
+* **WPS Pixie-Dust Attack** - Offline WPS PIN recovery (enabled by default, force with: `--wps-only --pixie`)
+* **WPS PIN Attack** - Online WPS brute-force (enabled by default, force with: `--wps-only --no-pixie`)
+* **WPA/WPA2 Handshake Capture** - Traditional 4-way handshake attack (enabled by default, force with: `--no-wps`)
+* **WEP Attacks** - Multiple methods: replay, chopchop, fragment, hirte, p0841, caffe-latte
+* **WPA3-SAE Support** - Modern WPA3 hash capture and cracking
 
+### Smart Features
+* **Automatic Target Detection** - Scans and identifies vulnerable networks
+* **Hidden Network Decloaking** - Reveals hidden SSIDs during attacks
+   * Works when channel is fixed with `-c <channel>`
+   * Disable with `--no-deauths`
+* **Multi-tool Validation** - Verifies handshakes with `tshark`, `cowpatty`, and `aircrack-ng`
+* **5GHz Support** - Works with 5GHz networks (use `-5` switch)
+   * Note: Some tools have limited 5GHz support
+* **Result Management** - Automatically saves cracked passwords and handshakes
+   * Includes detailed information (SSID, BSSID, date, method used)
+   * View previous results with `--cracked`
+
+### Performance & Reliability
+* **Resource Management** - Automatic cleanup prevents system resource exhaustion
+* **Memory Optimization** - Efficient handling of large target lists and long scans
+* **Process Monitoring** - Prevents zombie processes and file descriptor leaks
+* **Error Recovery** - Graceful handling of tool failures and system errors
+
+### Convenience Features
+* **Wordlist Cracking** - Test captured handshakes/PMKID against wordlists (`--crack`)
+* **Flexible Targeting** - Target specific networks by BSSID, ESSID, or channel
+* **Verbose Logging** - Detailed output for learning and debugging (`-v`, `-vv`, `-vvv`)
+* **Automation Support** - Scriptable with various timeout and retry options
+
+**💡 TIP:** Use `wifite -h -v` to see all available options and advanced settings!
+
+Performance Tips
+-----------------
+
+### For Best Results
+* **Use a dedicated wireless adapter** - USB adapters often perform better than built-in cards
+* **Position matters** - Get closer to target networks for better signal strength
+* **Choose the right channel** - Use `-c <channel>` to focus on specific channels
+* **Limit concurrent attacks** - Use `--first 5` to attack only the strongest targets first
+
+### Speed Optimization
+* **PMKID first** - Try `--pmkid-only` for fastest WPA/WPA2 attacks (no clients needed)
+* **Skip WPS on modern routers** - Use `--no-wps` on newer routers that likely have WPS disabled
+* **Use wordlists efficiently** - Start with common passwords, use `--dict <wordlist>`
+
+### Resource Management
+* **Monitor system resources** - Watch CPU and memory usage during long scans
+* **Regular breaks** - Stop and restart wifite periodically during extended sessions
+* **Clean up** - Remove old capture files and temporary data regularly
+
+### Core Features
 * **Less bugs**
    * Cleaner process management. Does not leave processes running in the background (the old `wifite` was bad about this).
    * No longer "one monolithic script". Has working unit tests. Pull requests are less-painful!
@@ -141,15 +222,48 @@ Comparing this repo to the "old wifite" @ https://github.com/derv82/wifite
 * Python 3 support.
 * Sweet new ASCII banner.
 
-What's gone?
-------------
-* Some command-line arguments (`--wept`, `--wpst`, and other confusing switches).
-   * You can still access some of these obscure options, try `wifite -h -v`
 
-What's not new?
+Troubleshooting
 ---------------
-* (Mostly) Backwards compatible with the original `wifite`'s arguments.
-* Same text-based interface everyone knows and loves.
+
+### Common Issues
+
+**"Too many open files" error:**
+- This has been fixed in v2.7.3 with enhanced process management
+- If you still encounter this, try reducing concurrent attacks or restart wifite
+
+**Permission denied errors:**
+- Ensure you're running wifite with `sudo`
+- Check that your wireless interface supports monitor mode
+- Verify all required tools are installed and accessible
+
+**Interface not found:**
+- Run `sudo airmon-ng` to see available interfaces
+- Use `sudo airmon-ng start <interface>` to enable monitor mode manually
+- Some interfaces require specific drivers or firmware
+
+**WPS attacks failing:**
+- Ensure `reaver` and/or `bully` are installed and up-to-date
+- Some routers have WPS disabled or rate-limiting enabled
+- Try the `--pixie` flag for Pixie-Dust attacks specifically
+
+**Handshake capture issues:**
+- Ensure clients are connected to the target network
+- Use `--deauth-count` to increase deauth attempts
+- Some networks may require longer capture times
+
+### Getting Help
+
+1. **Enable verbose mode:** Use `-v`, `-vv`, or `-vvv` to see detailed command output
+2. **Check dependencies:** Run `wifite --help` to see if all tools are detected
+3. **Update tools:** Ensure you have the latest versions of aircrack-ng, hashcat, etc.
+4. **Check compatibility:** Verify your wireless card supports monitor mode and injection
+
+For more help, please [open an issue](https://github.com/kimocoder/wifite2/issues) with:
+- Your operating system and version
+- Wireless card model and chipset
+- Full command output with `-vvv` flag
+- Error messages or unexpected behavior
 
 Screenshots
 -----------
@@ -181,3 +295,36 @@ Cracking a weak WEP password (using the WEP Replay attack):
 
 Cracking a pre-captured handshake using John The Ripper (via the `--crack` option):
 ![--crack option](https://i.imgur.com/iHcfCjp.gif)
+
+Contributing
+------------
+
+Wifite2 is actively maintained and welcomes contributions! Here's how you can help:
+
+### Reporting Issues
+* Use the [GitHub issue tracker](https://github.com/kimocoder/wifite2/issues)
+* Include your OS, wireless card model, and full error output
+* Use verbose mode (`-vvv`) to capture detailed logs
+
+### Contributing Code
+* Fork the repository and create a feature branch
+* Follow existing code style and add tests where possible
+* Submit pull requests with clear descriptions of changes
+* All contributions are welcome: bug fixes, new features, documentation improvements
+
+### Testing
+* Test on different wireless cards and operating systems
+* Report compatibility issues and successful configurations
+* Help verify fixes and new features
+
+### Documentation
+* Improve README sections, add examples, fix typos
+* Create tutorials and guides for specific use cases
+* Translate documentation to other languages
+
+**Maintainer:** [@kimocoder](https://github.com/kimocoder)  
+**Original Author:** [@derv82](https://github.com/derv82)
+
+---
+
+**⚠️ Legal Disclaimer:** This tool is for educational and authorized testing purposes only. Only use on networks you own or have explicit permission to test. Unauthorized access to computer networks is illegal.
