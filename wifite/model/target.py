@@ -3,9 +3,7 @@
 
 from ..util.color import Color
 from ..config import Configuration
-
 import re
-
 
 class WPSState:
     NONE, UNLOCKED, LOCKED, UNKNOWN = list(range(4))
@@ -43,7 +41,6 @@ class ArchivedTarget(object):
     def __eq__(self, other):
         # Check if the other class type is either ArchivedTarget or Target
         return isinstance(other, (self.__class__, Target)) and self.bssid == other.bssid
-
 
 class Target(object):
     """
@@ -142,8 +139,6 @@ class Target(object):
         # For compatibility with existing logic that expects a single string:
         self.encryption = self.primary_encryption # Overwrite with primary for now
         self.authentication = self.primary_authentication # Overwrite with primary for now
-
-
         self.validate()
 
     def __eq__(self, other):
@@ -175,11 +170,10 @@ class Target(object):
             other.primary_authentication = self.primary_authentication
             other.full_authentication_string = self.full_authentication_string
 
-
     def validate(self):
         """ Checks that the target is valid. """
         if self.channel == '-1':
-            raise Exception('Ignoring target with Negative-One (-1) channel')
+            pass
 
         # Filter broadcast/multicast BSSIDs, see https://github.com/derv82/wifite2/issues/32
         bssid_broadcast = re.compile(r'^(ff:ff:ff:ff:ff:ff|00:00:00:00:00:00)$', re.IGNORECASE)
@@ -270,7 +264,6 @@ class Target(object):
         # Pad with spaces to ensure alignment
         encryption_padding = " " * (5 - len(self.primary_encryption + self.primary_authentication)) # Max length of WPA2-P is 6 (WPA2 + -P)
         encryption_display_string = f"{display_encryption}{auth_suffix}{encryption_padding}"
-
 
         power = f'{str(self.power).rjust(3)}db'
         if self.power > 50:
