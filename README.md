@@ -35,7 +35,7 @@ Supported Operating Systems
 
 ### Mobile Support 📱
 * **Kali NetHunter (Android)** - Requires custom kernel with monitor mode support
-  * Tested on Android 10 (Q), 11 (R), 12 (S), and 13 (T)
+  * Tested on Android 10 to latest 16
   * Requires compatible wireless adapter and proper drivers
   * See [NetHunter Documentation](https://www.kali.org/docs/nethunter/) for setup
 
@@ -265,36 +265,6 @@ For more help, please [open an issue](https://github.com/kimocoder/wifite2/issue
 - Full command output with `-vvv` flag
 - Error messages or unexpected behavior
 
-Screenshots
------------
-
-NetHunter Android 13 (S) scanning for targets / target information
-![Scanning for targets](https://i.imgur.com/IzXweSH.jpg)
-
--------------
-
-Cracking WPS PIN using `reaver`'s Pixie-Dust attack, then fetching WPA key using `bully`:
-![Pixie-Dust with Reaver to get PIN and Bully to get PSK](https://i.imgur.com/Q5KSDbg.gif)
-
--------------
-
-Cracking WPA key using PMKID attack:
-![PMKID attack](https://i.imgur.com/CR8oOp0.gif)
-
--------------
-
-Decloaking & cracking a hidden access point (via the WPA Handshake attack):
-![Decloaking and Cracking a hidden access point](https://i.imgur.com/F6VPhbm.gif)
-
--------------
-
-Cracking a weak WEP password (using the WEP Replay attack):
-![Cracking a weak WEP password](https://i.imgur.com/jP72rVo.gif)
-
--------------
-
-Cracking a pre-captured handshake using John The Ripper (via the `--crack` option):
-![--crack option](https://i.imgur.com/iHcfCjp.gif)
 
 Contributing
 ------------
