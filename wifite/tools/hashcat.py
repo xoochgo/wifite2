@@ -113,7 +113,9 @@ class Hashcat(Dependency):
                 # Failed
                 continue
             else:
-                return stdout.strip().split(':', 1)[1]
+                # Hashcat PMKID output format: hash*bssid*station*essid:password
+                # We only want the password (last part after the last colon)
+                return stdout.strip().split(':')[-1]
 
 
 class HcxDumpTool(Dependency):
