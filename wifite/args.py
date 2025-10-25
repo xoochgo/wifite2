@@ -196,6 +196,16 @@ class Arguments(object):
                           dest='daemon',
                           help=Color.s('Puts device back in managed mode after quitting (default: {G}off{W})'))
 
+        glob.add_argument('--tui',
+                          action='store_true',
+                          dest='use_tui',
+                          help=Color.s('Use interactive TUI mode (default: {G}auto-detect{W})'))
+
+        glob.add_argument('--no-tui',
+                          action='store_true',
+                          dest='no_tui',
+                          help=Color.s('Use classic text mode, disable TUI (default: {G}auto-detect{W})'))
+
     def _add_eviltwin_args(self, group):
         """
         group.add_argument('--eviltwin',

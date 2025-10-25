@@ -44,6 +44,7 @@ class Bully(Attack, Dependency):
 
         self.cracked_pin = self.cracked_key = self.cracked_bssid = self.cracked_essid = None
         self.crack_result = None
+        self.attack_view = None  # Will be set by AttackWPS if TUI is active
 
         self.cmd = []
 
@@ -114,6 +115,40 @@ class Bully(Attack, Dependency):
                     Color.pexception(e)
                 self.stop()
                 break
+
+            # Update TUI view if available
+            if self.attack_view:
+                self.attack_view.refresh_if_needed()
+                
+                # Determine attack mode
+                mode = "Pixie Dust" if self.pixie_dust else "PIN Brute Force"
+                
+                # Build metrics
+                metrics = {
+                    'Mode': mode,
+                    'State': Color.strip_color(self.state),
+                    'Attempts': self.total_attempts,
+                    'Timeouts': self.total_timeouts,
+                    'Failures': self.total_failures,
+                }
+                
+                if self.last_pin:
+                    metrics['Last PIN'] = self.last_pin
+                
+                if self.pins_remaining >= 0:
+                    metrics['PINs Remaining'] = self.pins_remaining
+                
+                if self.eta:
+                    metrics['ETA'] = self.eta
+                
+                if self.locked:
+                    metrics['Status'] = 'Locked Out'
+                
+                # Update view
+                self.attack_view.update_progress({
+                    'status': f'{mode}: {Color.strip_color(self.state)}',
+                    'metrics': metrics
+                })
 
             # Update status
             self.pattack(self.get_status())

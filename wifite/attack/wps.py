@@ -4,6 +4,7 @@
 from ..model.attack import Attack
 from ..util.color import Color
 from ..config import Configuration
+from ..util.output import OutputManager
 from ..tools.bully import Bully
 from ..tools.reaver import Reaver
 
@@ -19,9 +20,26 @@ class AttackWPS(Attack):
         self.crack_result = None
         self.pixie_dust = pixie_dust
         self.null_pin = null_pin
+        
+        # Initialize TUI view if in TUI mode
+        self.view = None
+        if OutputManager.is_tui_mode():
+            try:
+                from ..ui.attack_view import WPSAttackView
+                self.view = WPSAttackView(OutputManager.get_controller(), target)
+                if pixie_dust:
+                    self.view.set_pixie_dust_mode(True)
+            except Exception:
+                # If TUI initialization fails, continue without it
+                self.view = None
 
     def run(self):
         """ Run all WPS-related attacks """
+        
+        # Start TUI view if available
+        if self.view:
+            self.view.start()
+            self.view.set_attack_type("WPS Attack")
 
         # Drop out if user specified to not use Reaver/Bully
         if Configuration.use_pmkid_only:
@@ -76,6 +94,9 @@ class AttackWPS(Attack):
 
     def run_bully(self):
         bully = Bully(self.target, pixie_dust=self.pixie_dust)
+        # Pass the view to bully for TUI updates
+        if self.view:
+            bully.attack_view = self.view
         bully.run()
         bully.stop()
         self.crack_result = bully.crack_result
@@ -84,6 +105,9 @@ class AttackWPS(Attack):
 
     def run_reaver(self):
         reaver = Reaver(self.target, pixie_dust=self.pixie_dust, null_pin=self.null_pin)
+        # Pass the view to reaver for TUI updates
+        if self.view:
+            reaver.attack_view = self.view
         reaver.run()
         self.crack_result = reaver.crack_result
         self.success = self.crack_result is not None

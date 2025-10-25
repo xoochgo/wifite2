@@ -12,7 +12,7 @@ class Configuration(object):
 
     initialized = False  # Flag indicating config has been initialized
     verbose = 0
-    version = '2.8.2'
+    version = '2.8.1'
 
     all_bands = None
     attack_max = None
@@ -80,6 +80,11 @@ class Configuration(object):
     wps_pixie = None
     wps_pixie_timeout = None
     wps_timeout_threshold = None
+    
+    # TUI settings
+    use_tui = None  # None = classic (default), True = force TUI, False = classic
+    tui_refresh_rate = None
+    tui_log_buffer_size = None
 
     @classmethod
     def initialize(cls, load_interface=True):
@@ -219,6 +224,13 @@ class Configuration(object):
         cls.crack_handshake = False
         cls.update_db = False
         cls.db_filename = 'ieee-oui.txt'
+
+        # TUI settings
+        cls.use_tui = False  # False = classic (default), True = force TUI
+        cls.tui_refresh_rate = 0.5  # Seconds between TUI updates
+        cls.tui_log_buffer_size = 1000  # Maximum log entries to keep in memory
+        cls.tui_color_scheme = 'default'  # Color scheme for TUI
+        cls.tui_debug = False  # Enable TUI debug logging
 
         # A list to cache all checked commands (e.g. `which hashcat` will execute only once)
         cls.existing_commands = {}
@@ -385,6 +397,15 @@ class Configuration(object):
             cls.scan_time = args.scan_time
             Color.pl(
                 f'{{+}} {{C}}option:{{W}} ({{G}}pillage{{W}}) attack all targets after {{G}}{args.scan_time:d}{{W}}s')
+
+        # TUI settings
+        if hasattr(args, 'use_tui') and args.use_tui:
+            cls.use_tui = True
+            Color.pl('{+} {C}option:{W} using {G}interactive TUI mode{W}')
+        elif hasattr(args, 'no_tui') and args.no_tui:
+            cls.use_tui = False
+            Color.pl('{+} {C}option:{W} using {G}classic text mode{W} (TUI disabled)')
+        # else: use_tui remains False (classic mode is default)
 
         if args.verbose:
             cls.verbose = args.verbose
@@ -567,6 +588,17 @@ class Configuration(object):
         if args.dont_use_pmkid:
             cls.dont_use_pmkid = True
             Color.pl('{+} {C}option:{W} will NOT use {C}PMKID{W} attack on WPA networks')
+
+    @classmethod
+    def parse_tui_args(cls, args):
+        """Parse TUI-related arguments"""
+        if args.use_tui:
+            cls.use_tui = True
+            Color.pl('{+} {C}option:{W} using {G}interactive TUI mode{W}')
+        elif args.no_tui:
+            cls.use_tui = False
+            Color.pl('{+} {C}option:{W} using {G}classic text mode{W}')
+        # If neither flag is set, use_tui remains False (classic mode is default)
 
     @classmethod
     def parse_encryption(cls):

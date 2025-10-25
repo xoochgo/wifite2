@@ -6,6 +6,7 @@ from time import sleep, time
 from ..config import Configuration
 from ..tools.airodump import Airodump
 from ..util.color import Color
+from ..util.output import OutputManager
 from shlex import quote as shlex_quote
 
 
@@ -23,6 +24,10 @@ class Scanner(object):
         self.err_msg = None
         self._max_targets = 1000  # Limit target list size to prevent memory bloat
         self._cleanup_counter = 0  # Counter for periodic cleanup
+        
+        # Initialize view based on output mode
+        self.view = None
+        self.use_tui = OutputManager.is_tui_mode()
 
     def find_targets(self):
         """
@@ -36,8 +41,26 @@ class Scanner(object):
         # Loads airodump with interface/channel/etc from Configuration
         try:
             with Airodump() as airodump:
+                # Initialize view for TUI mode after airodump starts
+                if self.use_tui:
+                    try:
+                        self.view = OutputManager.get_scanner_view()
+                        controller = OutputManager.get_controller()
+                        if controller:
+                            controller.start()
+                    except Exception as e:
+                        # If TUI fails to start, fall back to classic
+                        Color.pl('{!} {O}TUI failed to start: %s{W}' % str(e))
+                        Color.pl('{!} {O}Falling back to classic mode{W}')
+                        self.use_tui = False
+                        self.view = None
+                
                 # Loop until interrupted (Ctrl+C)
                 scan_start_time = time()
+
+                # Initial render for TUI
+                if self.use_tui and self.view:
+                    self.view.update_targets([], airodump.decloaking)
 
                 while True:
                     if airodump.pid.poll() is not None:
@@ -62,20 +85,24 @@ class Scanner(object):
                     if airodump.pid.poll() is not None:
                         return True  # Airodump process died
 
-                    self.print_targets()
+                    # Update display based on mode
+                    if self.use_tui and self.view:
+                        self.view.update_targets(self.targets, airodump.decloaking)
+                    else:
+                        self.print_targets()
 
-                    target_count = len(self.targets)
-                    client_count = sum(len(t2.clients) for t2 in self.targets)
+                        target_count = len(self.targets)
+                        client_count = sum(len(t2.clients) for t2 in self.targets)
 
-                    outline = '\r{+} Scanning'
-                    if airodump.decloaking:
-                        outline += ' & decloaking'
-                    outline += '. Found'
-                    outline += ' {G}%d{W} target(s),' % target_count
-                    outline += ' {G}%d{W} client(s).' % client_count
-                    outline += ' {O}Ctrl+C{W} when ready '
-                    Color.clear_entire_line()
-                    Color.p(outline)
+                        outline = '\r{+} Scanning'
+                        if airodump.decloaking:
+                            outline += ' & decloaking'
+                        outline += '. Found'
+                        outline += ' {G}%d{W} target(s),' % target_count
+                        outline += ' {G}%d{W} client(s).' % client_count
+                        outline += ' {O}Ctrl+C{W} when ready '
+                        Color.clear_entire_line()
+                        Color.p(outline)
 
                     if max_scan_time > 0 and time() > scan_start_time + max_scan_time:
                         return True
@@ -84,6 +111,13 @@ class Scanner(object):
 
         except KeyboardInterrupt:
             return self._extracted_from_find_targets_50()
+        finally:
+            # Clean up TUI view
+            if self.use_tui and self.view:
+                self.view.stop()
+                controller = OutputManager.get_controller()
+                if controller:
+                    controller.stop()
 
     # TODO Rename this here and in `find_targets`
     def _extracted_from_find_targets_50(self):
@@ -273,6 +307,30 @@ class Scanner(object):
 
     def _prompt_user_for_targets(self):
         """Prompt user to select targets from the list"""
+        # Use TUI selector if in TUI mode
+        if self.use_tui:
+            return self._prompt_user_for_targets_tui()
+        else:
+            return self._prompt_user_for_targets_classic()
+
+    def _prompt_user_for_targets_tui(self):
+        """Prompt user to select targets using TUI selector"""
+        try:
+            # Get selector view from OutputManager
+            selector_view = OutputManager.get_selector_view(self.targets)
+            
+            # Run interactive selector
+            chosen_targets = selector_view.run()
+            
+            return chosen_targets
+        except Exception as e:
+            # If TUI selector fails, fall back to classic mode
+            Color.pl('\n{!} {O}TUI selector failed: %s{W}' % str(e))
+            Color.pl('{!} {O}Falling back to classic selection mode{W}')
+            return self._prompt_user_for_targets_classic()
+
+    def _prompt_user_for_targets_classic(self):
+        """Prompt user to select targets using classic text input"""
         # Ask user for targets.
         self.print_targets()
         Color.clear_entire_line()

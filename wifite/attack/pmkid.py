@@ -6,6 +6,7 @@ from ..config import Configuration
 from ..tools.hashcat import HcxDumpTool, HcxPcapngTool, Hashcat
 from ..util.color import Color
 from ..util.timer import Timer
+from ..util.output import OutputManager
 from ..model.pmkid_result import CrackResultPMKID
 from ..tools.airodump import Airodump
 from threading import Thread, active_count
@@ -25,6 +26,16 @@ class AttackPMKID(Attack):
         self.pcapng_file = Configuration.temp('pmkid.pcapng')
         self.success = False
         self.timer = None
+        
+        # Initialize TUI view if in TUI mode
+        self.view = None
+        if OutputManager.is_tui_mode():
+            try:
+                from ..ui.attack_view import PMKIDAttackView
+                self.view = PMKIDAttackView(OutputManager.get_controller(), target)
+            except Exception:
+                # If TUI initialization fails, continue without it
+                self.view = None
 
     @staticmethod
     def get_existing_pmkid_file(bssid):
@@ -164,6 +175,11 @@ class AttackPMKID(Attack):
         return True
 
     def run(self):
+        # Start TUI view if available
+        if self.view:
+            self.view.start()
+            self.view.set_attack_type("PMKID Capture")
+        
         if self.do_airCRACK:
             self.run_aircrack()
         else:

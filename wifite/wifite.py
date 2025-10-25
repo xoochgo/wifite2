@@ -25,6 +25,19 @@ class Wifite(object):
 
         Configuration.initialize(load_interface=False)
 
+        # Initialize TUI logger if debug mode is enabled
+        from .util.tui_logger import TUILogger
+        if hasattr(Configuration, 'tui_debug') and Configuration.tui_debug:
+            TUILogger.initialize(enabled=True, debug_mode=True)
+
+        # Initialize output manager based on configuration
+        from .util.output import OutputManager
+        if Configuration.use_tui is True:
+            OutputManager.initialize('tui')
+        else:
+            # Default to classic mode (use_tui is False or None)
+            OutputManager.initialize('classic')
+
         if os.name == 'nt':
             Color.pl('{!} {R}error: {O}wifite{R} must be run under a {O}*NIX{W}{R} like OS')
             Configuration.exit_gracefully()

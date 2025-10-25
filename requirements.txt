@@ -1,4 +1,5 @@
 chardet==5.2.0
 pytest
+rich>=13.0.0
 scapy==2.6.1
 setuptools>=78.1.1

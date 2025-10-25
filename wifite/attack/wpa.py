@@ -9,6 +9,7 @@ from ..tools.aireplay import Aireplay
 from ..config import Configuration
 from ..util.color import Color
 from ..util.timer import Timer
+from ..util.output import OutputManager
 from ..model.handshake import Handshake
 from ..model.wpa_result import CrackResultWPA
 import time
@@ -23,9 +24,24 @@ class AttackWPA(Attack):
         self.clients = []
         self.crack_result = None
         self.success = False
+        
+        # Initialize TUI view if in TUI mode
+        self.view = None
+        if OutputManager.is_tui_mode():
+            try:
+                from ..ui.attack_view import WPAAttackView
+                self.view = WPAAttackView(OutputManager.get_controller(), target)
+            except Exception:
+                # If TUI initialization fails, continue without it
+                self.view = None
 
     def run(self):
         """Initiates full WPA handshake capture attack."""
+        
+        # Start TUI view if available
+        if self.view:
+            self.view.start()
+            self.view.set_attack_type("WPA Handshake Capture")
 
         # Skip if target is not WPS
         if Configuration.wps_only and self.target.wps is False:
@@ -75,20 +91,55 @@ class AttackWPA(Attack):
         # as Hashcat mode 22000 (hccapx) is generally preferred over aircrack-ng.
         # Aircrack.crack_handshake might be removed or kept for WEP only in future.
 
-        Color.pl(f'\n{{+}} {{C}}Cracking {"WPA3-SAE" if target_is_wpa3_sae else "WPA/WPA2"} Handshake:{{W}} Running {{C}}{cracker}{{W}} with '
-                 f'{{C}}{os.path.split(Configuration.wordlist)[-1] if Configuration.wordlist else "default wordlist"}{{W}} wordlist')
+        wordlist_name = os.path.split(Configuration.wordlist)[-1] if Configuration.wordlist else "default wordlist"
+        crack_msg = f'Cracking {"WPA3-SAE" if target_is_wpa3_sae else "WPA/WPA2"} Handshake: Running {cracker} with {wordlist_name} wordlist'
+        
+        Color.pl(f'\n{{+}} {{C}}{crack_msg}{{W}}')
+        
+        # Update TUI view if available
+        if self.view:
+            self.view.add_log(crack_msg)
+            self.view.update_progress({
+                'status': f'Cracking with {cracker}...',
+                'metrics': {
+                    'Cracker': cracker,
+                    'Wordlist': wordlist_name,
+                    'Type': 'WPA3-SAE' if target_is_wpa3_sae else 'WPA/WPA2'
+                }
+            })
 
         try:
             key = Hashcat.crack_handshake(handshake, target_is_wpa3_sae, show_command=Configuration.verbose > 1)
         except ValueError as e: # Catch errors from hash file generation (e.g. bad capture)
-            Color.pl(f"[!] Error during hash file generation for cracking: {e}")
+            error_msg = f"Error during hash file generation for cracking: {e}"
+            Color.pl(f"[!] {error_msg}")
+            if self.view:
+                self.view.add_log(error_msg)
             key = None
 
         if key is None:
-            Color.pl(f"{{!}} {{R}}Failed to crack handshake:{{W}} {Configuration.wordlist.split(os.sep)[-1] if Configuration.wordlist else 'Wordlist'} did not contain password")
+            fail_msg = f"Failed to crack handshake: {wordlist_name} did not contain password"
+            Color.pl(f"{{!}} {{R}}{fail_msg}{{W}}")
+            if self.view:
+                self.view.add_log(fail_msg)
+                self.view.update_progress({
+                    'status': 'Cracking failed',
+                    'progress': 0.0
+                })
             self.success = False
         else:
-            Color.pl(f"[+] Cracked {'WPA3-SAE' if target_is_wpa3_sae else 'WPA/WPA2'} Handshake Key: {key}\n")
+            success_msg = f"Cracked {'WPA3-SAE' if target_is_wpa3_sae else 'WPA/WPA2'} Handshake Key: {key}"
+            Color.pl(f"[+] {success_msg}\n")
+            if self.view:
+                self.view.add_log(success_msg)
+                self.view.update_progress({
+                    'status': 'Successfully cracked!',
+                    'progress': 1.0,
+                    'metrics': {
+                        'Key': key,
+                        'Status': 'Success'
+                    }
+                })
             self.crack_result = CrackResultWPA(handshake.bssid, handshake.essid, handshake.capfile, key)
             self.crack_result.dump()
             self.success = True
@@ -136,6 +187,19 @@ class AttackWPA(Attack):
 
             while handshake is None and not timeout_timer.ended():
                 step_timer = Timer(1)
+                
+                # Update TUI view if available
+                if self.view:
+                    self.view.refresh_if_needed()
+                    self.view.update_progress({
+                        'status': f'Listening for handshake (clients: {len(self.clients)})',
+                        'metrics': {
+                            'Clients': len(self.clients),
+                            'Deauth Timer': str(deauth_timer),
+                            'Timeout': str(timeout_timer)
+                        }
+                    })
+                
                 Color.clear_entire_line()
                 Color.pattack('WPA',
                               airodump_target,
@@ -177,6 +241,19 @@ class AttackWPA(Attack):
                                   'Handshake capture',
                                   '{G}Captured handshake{W}')
                     Color.pl('')
+                    
+                    # Update TUI view
+                    if self.view:
+                        self.view.add_log('Captured handshake!')
+                        self.view.update_progress({
+                            'status': 'Handshake captured successfully',
+                            'progress': 1.0,
+                            'metrics': {
+                                'Handshake': '✓',
+                                'Clients': len(self.clients)
+                            }
+                        })
+                    
                     break
 
                 # There is no handshake
@@ -199,6 +276,10 @@ class AttackWPA(Attack):
                                       'Discovered new client: {G}%s{W}' % client.station)
                         Color.pl('')
                         self.clients.append(client.station)
+                        
+                        # Update TUI view
+                        if self.view:
+                            self.view.add_log(f'Discovered new client: {client.station}')
 
                 # Send deauth to a client or broadcast
                 if deauth_timer.ended():
@@ -286,6 +367,11 @@ class AttackWPA(Attack):
                           target,
                           'Handshake capture',
                           'Deauthing {O}%s{W}' % target_name)
+            
+            # Update TUI view
+            if self.view:
+                self.view.add_log(f'Sending deauth to {target_name}')
+            
             Aireplay.deauth(target.bssid, client_mac=client, timeout=2)
 
 

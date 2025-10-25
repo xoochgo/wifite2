@@ -11,6 +11,7 @@ from ..tools.aireplay import Aireplay, WEPAttackType
 from ..tools.airodump import Airodump
 from ..tools.ip import Ip
 from ..util.color import Color
+from ..util.output import OutputManager
 
 
 class AttackWEP(Attack):
@@ -24,6 +25,16 @@ class AttackWEP(Attack):
         super(AttackWEP, self).__init__(target)
         self.crack_result = None
         self.success = False
+        
+        # Initialize TUI view if in TUI mode
+        self.view = None
+        if OutputManager.is_tui_mode():
+            try:
+                from ..ui.attack_view import WEPAttackView
+                self.view = WEPAttackView(OutputManager.get_controller(), target)
+            except Exception:
+                # If TUI initialization fails, continue without it
+                self.view = None
 
     def run(self):
         """
@@ -31,6 +42,11 @@ class AttackWEP(Attack):
             Including airodump-ng starting, cracking, etc.
             Returns: True if attack is successful, false otherwise
         """
+        
+        # Start TUI view if available
+        if self.view:
+            self.view.start()
+            self.view.set_attack_type("WEP Attack")
 
         aircrack = None  # Aircrack process, not started yet
         fakeauth_proc = None

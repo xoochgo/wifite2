@@ -34,6 +34,7 @@ class Reaver(Attack, Dependency):
         self.last_line_number = 0
 
         self.crack_result = None
+        self.attack_view = None  # Will be set by AttackWPS if TUI is active
 
         self.output_filename = Configuration.temp('reaver.out')
         if os.path.exists(self.output_filename):
@@ -130,6 +131,30 @@ class Reaver(Attack, Dependency):
                 stdout = self.get_output()
                 self.state = self.parse_state(stdout)
                 self.parse_failure(stdout)
+
+                # Update TUI view if available
+                if self.attack_view:
+                    self.attack_view.refresh_if_needed()
+                    
+                    # Determine attack mode
+                    mode = "Pixie Dust" if self.pixie_dust else "PIN Brute Force"
+                    
+                    # Build metrics
+                    metrics = {
+                        'Mode': mode,
+                        'State': self.state,
+                        'Progress': self.progress,
+                        'Attempts': self.total_attempts,
+                    }
+                    
+                    if self.locked:
+                        metrics['Status'] = 'Locked Out'
+                    
+                    # Update view
+                    self.attack_view.update_progress({
+                        'status': f'{mode}: {self.state}',
+                        'metrics': metrics
+                    })
 
                 # Print status line
                 self.pattack(self.get_status())
