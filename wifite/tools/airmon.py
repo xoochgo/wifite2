@@ -292,24 +292,39 @@ class Airmon(Dependency):
         # airmon-ng output examples:
         # (mac80211 monitor mode vif enabled for [phy10]wlan0 on [phy10]wlan0mon)
         # (mac80211 monitor mode already enabled for [phy0]wlxd037456283c3 on [phy0]10)
+        # (mac80211 monitor mode vif enabled for [phy5]wlxd037456283c3 on [phy5]wlxd037456283c3mon)
 
         # Try to match from the "on" part first - this is the actual monitor interface
-        enabled_on_re = re.compile(r'.*\(mac80211 monitor mode (?:(?:vif )?enabled|already enabled) (?:for [^ ]+ )?on (?:\[\w+])?([a-zA-Z]\w+)\)?.*')
+        # Updated regex to handle interface names that may contain numbers at the start
+        enabled_on_re = re.compile(r'.*\(mac80211 monitor mode (?:(?:vif )?enabled|already enabled) (?:for [^ ]+ )?on (?:\[\w+])?([a-zA-Z][\w-]+(?:mon)?)\)?.*')
 
         # Fallback: try to match from the "for" part if "on" part is just numbers (channel)
         enabled_for_re = re.compile(r'.*\(mac80211 monitor mode (?:(?:vif )?enabled|already enabled) for (?:\[\w+])?(\w+).*on (?:\[\w+])?\d+\)?.*')
         lines = airmon_output.split('\n')
 
         for index, line in enumerate(lines):
+            if 'mac80211 monitor mode' not in line:
+                continue
+                
+            print(f"DEBUG: Parsing line: {repr(line)}")
+            
             # First try to get interface from "on" part if it looks like an interface name
             if matches := enabled_on_re.match(line):
-                return matches.group(1)
+                result = matches.group(1)
+                print(f"DEBUG: enabled_on_re matched: {repr(result)}")
+                return result
             # Fallback to "for" part if "on" part is just a channel number
             elif matches := enabled_for_re.match(line):
-                return matches.group(1)
+                result = matches.group(1)
+                print(f"DEBUG: enabled_for_re matched: {repr(result)}")
+                return result
             # Legacy fallback
             elif "monitor mode enabled" in line:
-                return line.split()[-1]
+                result = line.split()[-1]
+                print(f"DEBUG: legacy fallback matched: {repr(result)}")
+                return result
+            else:
+                print(f"DEBUG: No regex matched this line")
 
         return None
 
