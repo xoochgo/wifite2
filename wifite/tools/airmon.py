@@ -244,15 +244,17 @@ class Airmon(Dependency):
             Color.p('{+} Enabling {G}monitor mode{W} on {C}%s{W}... ' % iface_name)
             airmon_output = Process(['airmon-ng', 'start', iface_name]).stdout()
             enabled_interface = Airmon._parse_airmon_start(airmon_output)
-            # Debug: print what we got
-            print(f"\nDEBUG: Full airmon_output = {repr(airmon_output)}")
-            print(f"DEBUG: enabled_interface = {repr(enabled_interface)}")
+            
+            # Debug output for troubleshooting airmon-ng parsing issues
+            if Configuration.verbose > 0:
+                print(f"\nDEBUG: Full airmon_output = {repr(airmon_output)}")
+                print(f"DEBUG: enabled_interface = {repr(enabled_interface)}")
 
-            # Debug the parsing step by step
-            lines = airmon_output.split('\n')
-            for i, line in enumerate(lines):
-                if 'mac80211 monitor mode' in line:
-                    print(f"DEBUG: Found monitor mode line {i}: {repr(line)}")
+                # Debug the parsing step by step
+                lines = airmon_output.split('\n')
+                for i, line in enumerate(lines):
+                    if 'mac80211 monitor mode' in line:
+                        print(f"DEBUG: Found monitor mode line {i}: {repr(line)}")
         else:
             enabled_interface = None
 
@@ -305,26 +307,31 @@ class Airmon(Dependency):
         for index, line in enumerate(lines):
             if 'mac80211 monitor mode' not in line:
                 continue
-                
-            print(f"DEBUG: Parsing line: {repr(line)}")
+            
+            if Configuration.verbose > 0:
+                print(f"DEBUG: Parsing line: {repr(line)}")
             
             # First try to get interface from "on" part if it looks like an interface name
             if matches := enabled_on_re.match(line):
                 result = matches.group(1)
-                print(f"DEBUG: enabled_on_re matched: {repr(result)}")
+                if Configuration.verbose > 0:
+                    print(f"DEBUG: enabled_on_re matched: {repr(result)}")
                 return result
             # Fallback to "for" part if "on" part is just a channel number
             elif matches := enabled_for_re.match(line):
                 result = matches.group(1)
-                print(f"DEBUG: enabled_for_re matched: {repr(result)}")
+                if Configuration.verbose > 0:
+                    print(f"DEBUG: enabled_for_re matched: {repr(result)}")
                 return result
             # Legacy fallback
             elif "monitor mode enabled" in line:
                 result = line.split()[-1]
-                print(f"DEBUG: legacy fallback matched: {repr(result)}")
+                if Configuration.verbose > 0:
+                    print(f"DEBUG: legacy fallback matched: {repr(result)}")
                 return result
             else:
-                print(f"DEBUG: No regex matched this line")
+                if Configuration.verbose > 0:
+                    print(f"DEBUG: No regex matched this line")
 
         return None
 
