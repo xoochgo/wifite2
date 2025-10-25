@@ -497,6 +497,7 @@ class Configuration(object):
 
         elif args.wps_pixie:
             # WPS Pixie-Dust only
+            cls.no_wps = False  # Explicitly ensure WPS attacks are enabled
             cls.wps_pixie = True
             cls.wps_no_nullpin = True
             cls.wps_pin = False
@@ -504,6 +505,7 @@ class Configuration(object):
 
         elif args.wps_no_nullpin:
             # WPS NULL PIN only
+            cls.no_wps = False  # Explicitly ensure WPS attacks are enabled
             cls.wps_pixie = True
             cls.wps_no_nullpin = False
             cls.wps_pin = True
@@ -511,6 +513,7 @@ class Configuration(object):
 
         elif args.wps_no_pixie:
             # WPS PIN only
+            cls.no_wps = False  # Explicitly ensure WPS attacks are enabled
             cls.wps_pixie = False
             cls.wps_no_nullpin = True
             cls.wps_pin = True
