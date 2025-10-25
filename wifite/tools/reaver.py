@@ -2,6 +2,7 @@ import os
 import re
 import time
 
+import subprocess
 from .airodump import Airodump
 from .dependency import Dependency
 from ..config import Configuration
