@@ -61,16 +61,45 @@ class EncryptionBadge:
     }
 
     @staticmethod
-    def render(encryption_type: str) -> Text:
+    def render(encryption_type: str, target=None) -> Text:
         """
         Render encryption type as a colored badge.
 
         Args:
             encryption_type: Encryption type string (e.g., "WPA2", "WEP")
+            target: Optional Target object for WPA3 transition mode detection
 
         Returns:
             Rich Text object with colored encryption badge
         """
+        # Check for WPA3 transition mode
+        if target and hasattr(target, 'is_transition') and target.is_transition:
+            text = Text("W23", style="magenta")  # Magenta for transition mode
+            # Add PMF indicator
+            if hasattr(target, 'pmf_status'):
+                if target.pmf_status == 'required':
+                    text.append("+", style="green")  # PMF required
+                elif target.pmf_status == 'optional':
+                    text.append("~", style="yellow")  # PMF optional
+            # Add Dragonblood vulnerability indicator
+            if hasattr(target, 'wpa3_info') and target.wpa3_info and target.wpa3_info.dragonblood_vulnerable:
+                text.append("!", style="red bold")  # Dragonblood vulnerable
+            return text
+        
+        # Check for WPA3-only with PMF indicator
+        if target and hasattr(target, 'is_wpa3') and target.is_wpa3:
+            enc_upper = encryption_type.upper()
+            color = EncryptionBadge.COLORS.get(enc_upper, "white")
+            text = Text(encryption_type, style=color)
+            # Add PMF indicator for WPA3
+            if hasattr(target, 'pmf_status') and target.pmf_status == 'required':
+                text.append("+", style="green")  # PMF required
+            # Add Dragonblood vulnerability indicator
+            if hasattr(target, 'wpa3_info') and target.wpa3_info and target.wpa3_info.dragonblood_vulnerable:
+                text.append("!", style="red bold")  # Dragonblood vulnerable
+            return text
+        
+        # Standard encryption display
         enc_upper = encryption_type.upper()
         color = EncryptionBadge.COLORS.get(enc_upper, "white")
         return Text(encryption_type, style=color)

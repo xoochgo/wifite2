@@ -342,7 +342,7 @@ class SelectorView:
         Returns:
             Rich Text with colored encryption badge
         """
-        return EncryptionBadge.render(target.encryption)
+        return EncryptionBadge.render(target.encryption, target)
 
     def _format_wps(self, target) -> Text:
         """

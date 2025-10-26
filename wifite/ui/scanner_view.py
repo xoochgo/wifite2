@@ -20,18 +20,20 @@ from .components import SignalStrengthBar, EncryptionBadge
 class ScannerView:
     """Interactive scanning interface with real-time updates."""
 
-    def __init__(self, tui_controller):
+    def __init__(self, tui_controller, session=None):
         """
         Initialize scanner view.
 
         Args:
             tui_controller: TUIController instance for rendering
+            session: Optional SessionState for resumed sessions
         """
         self.tui = tui_controller
         self.targets = []
         self.scan_start_time = time.time()
         self.decloaking = False
         self.max_visible_targets = 50  # Limit displayed targets for performance
+        self.session = session  # Store session for resume status display
 
     def update_targets(self, targets: List, decloaking: bool = False):
         """
@@ -79,7 +81,8 @@ class ScannerView:
 
         # Count targets by encryption type
         wep_count = sum(1 for t in self.targets if 'WEP' in t.encryption)
-        wpa_count = sum(1 for t in self.targets if 'WPA' in t.encryption)
+        wpa_count = sum(1 for t in self.targets if 'WPA' in t.encryption and not hasattr(t, 'is_wpa3') or not t.is_wpa3)
+        wpa3_count = sum(1 for t in self.targets if hasattr(t, 'is_wpa3') and t.is_wpa3)
         wps_count = sum(1 for t in self.targets if hasattr(t, 'wps') and t.wps)
 
         # Count clients
@@ -88,7 +91,33 @@ class ScannerView:
         # Build header text - single line for compactness
         header = Text()
         header.append("wifite2 ", style="bold cyan")
-        header.append("- Scanning", style="bold yellow")
+        
+        # Show resume indicator if this is a resumed session
+        if self.session:
+            header.append("- ", style="white")
+            header.append("RESUMED SESSION", style="bold magenta")
+            header.append(" - Scanning", style="bold yellow")
+            
+            # Add session progress info
+            summary = self.session.get_progress_summary()
+            header.append(f" | Progress: ", style="white")
+            header.append(f"{summary['completed']}", style="green")
+            header.append("/", style="white")
+            header.append(f"{summary['total']}", style="cyan")
+            
+            # Add session age
+            age_hours = summary['age_hours']
+            if age_hours < 1:
+                age_str = f"{int(age_hours * 60)}m"
+            elif age_hours < 24:
+                age_str = f"{int(age_hours)}h"
+            else:
+                age_str = f"{int(age_hours / 24)}d"
+            header.append(f" | Age: ", style="white")
+            header.append(age_str, style="yellow")
+        else:
+            header.append("- Scanning", style="bold yellow")
+        
         if self.decloaking:
             header.append(" & decloaking", style="yellow")
         header.append(f" {minutes:02d}:{seconds:02d} | ", style="white")
@@ -98,6 +127,8 @@ class ScannerView:
         header.append(f"{wep_count}", style="red")
         header.append(f" | WPA: ", style="white")
         header.append(f"{wpa_count}", style="yellow")
+        header.append(f" | WPA3: ", style="white")
+        header.append(f"{wpa3_count}", style="magenta")
         header.append(f" | WPS: ", style="white")
         header.append(f"{wps_count}", style="cyan")
         header.append(f" | Clients: ", style="white")
@@ -141,7 +172,7 @@ class ScannerView:
         
         table.add_column("CH", style="white", width=3, justify="center")
         table.add_column("PWR", style="white", width=5, justify="center")
-        table.add_column("ENC", style="white", width=8)
+        table.add_column("ENC", style="white", width=12)  # Increased width for WPA3 indicators
         table.add_column("WPS", style="white", width=4, justify="center")
         table.add_column("CLIENTS", style="white", width=7, justify="right")
 
@@ -237,6 +268,7 @@ class ScannerView:
     def _format_encryption(self, target) -> Text:
         """
         Format encryption type with color coding.
+        Shows WPA3/Transition/WPA2 status, PMF indicators, and Dragonblood markers.
 
         Args:
             target: Target object
@@ -244,7 +276,23 @@ class ScannerView:
         Returns:
             Rich Text with colored encryption badge
         """
-        return EncryptionBadge.render(target.encryption)
+        enc_text = EncryptionBadge.render(target.encryption, target)
+        
+        # Add PMF indicator if WPA3 info is available
+        if hasattr(target, 'wpa3_info') and target.wpa3_info:
+            if target.wpa3_info.pmf_status == 'required':
+                enc_text.append(" ", style="white")
+                enc_text.append("🛡", style="cyan")  # Shield for PMF required
+            elif target.wpa3_info.pmf_status == 'optional':
+                enc_text.append(" ", style="white")
+                enc_text.append("◐", style="yellow")  # Half-circle for PMF optional
+        
+        # Add Dragonblood vulnerability marker
+        if hasattr(target, 'is_dragonblood_vulnerable') and target.is_dragonblood_vulnerable:
+            enc_text.append(" ", style="white")
+            enc_text.append("⚠", style="red bold")  # Warning for vulnerability
+        
+        return enc_text
 
     def _format_wps(self, target) -> Text:
         """

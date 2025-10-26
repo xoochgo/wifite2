@@ -5,6 +5,7 @@ from .dependency import Dependency
 from .tshark import Tshark
 from .wash import Wash
 from ..util.process import Process
+from ..util.wpa3 import WPA3Detector, WPA3Info
 from ..config import Configuration
 from ..model.target import Target, WPSState
 from ..model.client import Client
@@ -199,6 +200,9 @@ class Airodump(Dependency):
                 # No tshark, or it failed. Fall-back to wash
                 Wash.check_for_wps_and_update_targets(capfile, new_targets)
 
+        # Detect WPA3 capabilities for all targets
+        Airodump.detect_wpa3_capabilities(new_targets)
+
         if apply_filter:
             # Filter targets based on encryption, WPS capability & power
             new_targets = Airodump.filter_targets(new_targets, skip_wps=self.skip_wps)
@@ -285,6 +289,32 @@ class Airodump(Dependency):
                 continue
 
         return targets2
+
+    @staticmethod
+    def detect_wpa3_capabilities(targets):
+        """
+        Detect and store WPA3 capabilities for all targets.
+        
+        This method analyzes each target's encryption and authentication
+        information to determine WPA3 support, transition mode, PMF status,
+        and other WPA3-related capabilities.
+        
+        Performance: Detection results are cached in target.wpa3_info.
+        Subsequent calls to WPA3Detector methods will use cached data.
+        
+        Args:
+            targets: List of Target objects to analyze
+        """
+        for target in targets:
+            # Skip if already detected (cached)
+            if hasattr(target, 'wpa3_info') and target.wpa3_info is not None:
+                continue
+            
+            # Detect WPA3 capability (use_cache=False since we're setting it)
+            wpa3_info_dict = WPA3Detector.detect_wpa3_capability(target, use_cache=False)
+            
+            # Create WPA3Info object and attach to target for caching
+            target.wpa3_info = WPA3Info.from_dict(wpa3_info_dict)
 
     @staticmethod
     def filter_targets(targets5, skip_wps=False):

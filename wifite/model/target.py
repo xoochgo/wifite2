@@ -139,6 +139,10 @@ class Target(object):
         # For compatibility with existing logic that expects a single string:
         self.encryption = self.primary_encryption # Overwrite with primary for now
         self.authentication = self.primary_authentication # Overwrite with primary for now
+        
+        # WPA3 information (will be populated by scanner)
+        self.wpa3_info = None
+        
         self.validate()
 
     def __eq__(self, other):
@@ -169,6 +173,36 @@ class Target(object):
         if hasattr(self, 'primary_authentication'):
             other.primary_authentication = self.primary_authentication
             other.full_authentication_string = self.full_authentication_string
+        if hasattr(self, 'wpa3_info'):
+            other.wpa3_info = self.wpa3_info
+
+    @property
+    def is_wpa3(self):
+        """Check if target supports WPA3."""
+        if self.wpa3_info is None:
+            return False
+        return self.wpa3_info.has_wpa3
+    
+    @property
+    def is_transition(self):
+        """Check if target is in WPA3 transition mode (supports both WPA2 and WPA3)."""
+        if self.wpa3_info is None:
+            return False
+        return self.wpa3_info.is_transition
+    
+    @property
+    def pmf_status(self):
+        """Get PMF (Protected Management Frames) status."""
+        if self.wpa3_info is None:
+            return 'disabled'
+        return self.wpa3_info.pmf_status
+    
+    @property
+    def is_dragonblood_vulnerable(self):
+        """Check if target is vulnerable to Dragonblood attacks."""
+        if self.wpa3_info is None:
+            return False
+        return self.wpa3_info.dragonblood_vulnerable
 
     def validate(self):
         """ Checks that the target is valid. """
@@ -232,37 +266,53 @@ class Target(object):
         channel = Color.s(f'{channel_color}{str(self.channel).rjust(3)}')
 
         # Use primary_encryption and primary_authentication for display
-        display_encryption = self.primary_encryption.rjust(4) # Adjusted rjust for WPA3
-        auth_suffix = ''
-        if self.primary_encryption == 'WPA3':
-            display_encryption = Color.s('{P}%s' % display_encryption) # Purple for WPA3
-            if self.primary_authentication == 'SAE':
-                auth_suffix = Color.s('{P}-S') # Purple for SAE
-            elif self.primary_authentication == 'MGT':
-                 auth_suffix = Color.s('{R}-E') # Red for Enterprise
-        elif self.primary_encryption == 'WPA2':
-            display_encryption = Color.s('{O}%s' % display_encryption) # Orange for WPA2
-            if self.primary_authentication == 'PSK':
-                auth_suffix = Color.s('{O}-P')
-            elif self.primary_authentication == 'MGT':
-                auth_suffix = Color.s('{R}-E')
-        elif self.primary_encryption == 'WPA':
-            display_encryption = Color.s('{O}%s' % display_encryption) # Orange for WPA
-            if self.primary_authentication == 'PSK':
-                auth_suffix = Color.s('{O}-P')
-            elif self.primary_authentication == 'MGT':
-                auth_suffix = Color.s('{R}-E')
-        elif self.primary_encryption == 'WEP':
-            display_encryption = Color.s('{G}%s' % display_encryption) # Green for WEP
-        elif self.primary_encryption == 'OWE':
-            display_encryption = Color.s('{B}%s' % display_encryption) # Blue for OWE
+        # Check for WPA3 transition mode
+        if self.is_transition:
+            # Show "W23" for transition mode (WPA2/WPA3)
+            display_encryption = Color.s('{P}W23') # Purple for WPA3 transition
+            auth_suffix = ''
+            # Add PMF indicator for transition mode
+            if self.pmf_status == 'required':
+                auth_suffix = Color.s('{P}+') # PMF required
+            elif self.pmf_status == 'optional':
+                auth_suffix = Color.s('{O}~') # PMF optional
         else:
-            display_encryption = Color.s('{W}%s' % display_encryption) # White for others
+            display_encryption = self.primary_encryption.rjust(4) # Adjusted rjust for WPA3
+            auth_suffix = ''
+            if self.primary_encryption == 'WPA3':
+                display_encryption = Color.s('{P}%s' % display_encryption) # Purple for WPA3
+                if self.primary_authentication == 'SAE':
+                    auth_suffix = Color.s('{P}-S') # Purple for SAE
+                elif self.primary_authentication == 'MGT':
+                     auth_suffix = Color.s('{R}-E') # Red for Enterprise
+                # Add PMF indicator for WPA3-only
+                if self.pmf_status == 'required':
+                    auth_suffix += Color.s('{P}+') # PMF required
+            elif self.primary_encryption == 'WPA2':
+                display_encryption = Color.s('{O}%s' % display_encryption) # Orange for WPA2
+                if self.primary_authentication == 'PSK':
+                    auth_suffix = Color.s('{O}-P')
+                elif self.primary_authentication == 'MGT':
+                    auth_suffix = Color.s('{R}-E')
+            elif self.primary_encryption == 'WPA':
+                display_encryption = Color.s('{O}%s' % display_encryption) # Orange for WPA
+                if self.primary_authentication == 'PSK':
+                    auth_suffix = Color.s('{O}-P')
+                elif self.primary_authentication == 'MGT':
+                    auth_suffix = Color.s('{R}-E')
+            elif self.primary_encryption == 'WEP':
+                display_encryption = Color.s('{G}%s' % display_encryption) # Green for WEP
+            elif self.primary_encryption == 'OWE':
+                display_encryption = Color.s('{B}%s' % display_encryption) # Blue for OWE
+            else:
+                display_encryption = Color.s('{W}%s' % display_encryption) # White for others
 
         # Calculate padding for ENCR column based on its content length
-        # Max length of ENCR (e.g. WPA2-P) is 6. OPN is 3.
+        # Max length of ENCR (e.g. WPA2-P or W23+) is now variable
         # Pad with spaces to ensure alignment
-        encryption_padding = " " * (5 - len(self.primary_encryption + self.primary_authentication)) # Max length of WPA2-P is 6 (WPA2 + -P)
+        base_len = 3 if self.is_transition else len(self.primary_encryption)
+        suffix_len = len(auth_suffix.replace(Color.s('{P}'), '').replace(Color.s('{O}'), '').replace(Color.s('{R}'), '').replace(Color.s('{W}'), ''))
+        encryption_padding = " " * max(0, 7 - base_len - suffix_len)
         encryption_display_string = f"{display_encryption}{auth_suffix}{encryption_padding}"
 
         power = f'{str(self.power).rjust(3)}db'
