@@ -6,10 +6,12 @@ from enum import Enum
 from .pmkid import AttackPMKID
 from .wep import AttackWEP
 from .wpa import AttackWPA
+from .wpa3 import AttackWPA3SAE
 from .wps import AttackWPS
 from ..config import Configuration
 from ..model.target import WPSState
 from ..util.color import Color
+from ..util.wpa3_tools import WPA3ToolChecker
 
 class Answer(Enum):
     Skip = 1
@@ -19,7 +21,7 @@ class Answer(Enum):
 
 class AttackAll(object):
     @classmethod
-    def attack_multiple(cls, targets):
+    def attack_multiple(cls, targets, session=None, session_mgr=None):
         """
         Attacks all given `targets` (list[wifite.model.target]) until user interruption.
         Returns: Number of targets that were attacked (int)
@@ -53,14 +55,14 @@ class AttackAll(object):
             Color.pl('\n{+} ({G}%d{W}/{G}%d{W})'
                      % (index, len(targets)) + ' Starting attacks against {C}%s{W} ({C}%s{W})' % (bssid, essid))
 
-            should_continue = cls.attack_single(target, targets_remaining)
+            should_continue = cls.attack_single(target, targets_remaining, session, session_mgr)
             if not should_continue:
                 break
 
         return attacked_targets
 
     @classmethod
-    def attack_single(cls, target, targets_remaining):
+    def attack_single(cls, target, targets_remaining, session=None, session_mgr=None):
         """
         Attacks a single `target` (wifite.model.target).
         Returns: True if attacks should continue, False otherwise.
@@ -68,6 +70,11 @@ class AttackAll(object):
         global attack
         if 'MGT' in target.authentication:
             Color.pl("\n{!}{O}Skipping. Target is using {C}WPA-Enterprise {O}and can not be cracked.")
+            # Mark as failed in session
+            if session and session_mgr:
+                session_mgr.mark_target_failed(session, target.bssid, "WPA-Enterprise not supported")
+                session_mgr.save_session(session)
+                Color.pl('{+} {D}Session updated: target {C}%s{D} marked as {R}failed{W}' % target.bssid)
             return True
 
         attacks = []
@@ -81,12 +88,27 @@ class AttackAll(object):
 
         elif target.primary_encryption.startswith('WPA'): # Covers WPA, WPA2, WPA3
             # WPA can have multiple attack vectors:
-
-            # WPS
-            # For WPA3, WPS is not applicable in the same way.
-            # WPS is generally being phased out with WPA3, though some transition modes might exist.
-            # We will only attempt WPS if it's explicitly WPA or WPA2 (not WPA3).
-            if target.primary_encryption != 'WPA3' and \
+            
+            # Check if this is a WPA3 target
+            is_wpa3 = target.primary_encryption == 'WPA3' or \
+                     (hasattr(target, 'wpa3_info') and target.wpa3_info and 
+                      (hasattr(target.wpa3_info, 'has_wpa3') and target.wpa3_info.has_wpa3))
+            
+            # For WPA3 targets, use specialized WPA3 attack if tools are available
+            if is_wpa3 and WPA3ToolChecker.can_attack_wpa3():
+                # Use WPA3-specific attack module
+                attacks.append(AttackWPA3SAE(target))
+                
+                # For transition mode, also try standard WPA2 attacks as fallback
+                if hasattr(target, 'wpa3_info') and target.wpa3_info and target.wpa3_info.get('is_transition'):
+                    if not Configuration.wps_only and not Configuration.use_pmkid_only:
+                        # Add PMKID and WPA attacks as fallback for transition mode
+                        if not Configuration.dont_use_pmkid:
+                            attacks.append(AttackPMKID(target))
+                        attacks.append(AttackWPA(target))
+            
+            # WPS attacks (not applicable to pure WPA3)
+            elif not is_wpa3 and \
                not Configuration.use_pmkid_only and \
                target.wps is WPSState.UNLOCKED and \
                AttackWPS.can_attack_wps():
@@ -103,30 +125,37 @@ class AttackAll(object):
                 if Configuration.wps_pin: # This implies not wps_pixie_only
                     attacks.append(AttackWPS(target, pixie_dust=False))
 
-            # PMKID and Handshake attacks are applicable to WPA, WPA2, and WPA3
-            if not Configuration.wps_only: # If --wps-only is not set
-                # PMKID
-                if not Configuration.dont_use_pmkid: # If --no-pmkid is not set
-                    attacks.append(AttackPMKID(target))
+            # PMKID and Handshake attacks for WPA/WPA2 (or WPA3 if tools not available)
+            if not is_wpa3 or not WPA3ToolChecker.can_attack_wpa3():
+                if not Configuration.wps_only: # If --wps-only is not set
+                    # PMKID
+                    if not Configuration.dont_use_pmkid: # If --no-pmkid is not set
+                        attacks.append(AttackPMKID(target))
 
-                # Handshake capture
-                if not Configuration.use_pmkid_only: # If --pmkid (means pmkid-only) is not set
-                    attacks.append(AttackWPA(target))
-            elif target.primary_encryption == 'WPA3' and Configuration.wps_only:
-                # Special case: If it's WPA3 and --wps-only is specified,
-                # WPS attacks are skipped. We should still allow PMKID/Handshake for WPA3.
-                Color.pl('{!} {O}Note: --wps-only is active, but target is WPA3. WPS attacks are not applicable.')
-                Color.pl('{+} {C}Proceeding with PMKID and Handshake attacks for WPA3 target.{W}')
-                if not Configuration.dont_use_pmkid:
-                    attacks.append(AttackPMKID(target))
-                if not Configuration.use_pmkid_only:
-                    attacks.append(AttackWPA(target))
+                    # Handshake capture
+                    if not Configuration.use_pmkid_only: # If --pmkid (means pmkid-only) is not set
+                        attacks.append(AttackWPA(target))
+                elif is_wpa3 and Configuration.wps_only:
+                    # Special case: If it's WPA3 and --wps-only is specified,
+                    # WPS attacks are skipped. We should still allow PMKID/Handshake for WPA3.
+                    Color.pl('{!} {O}Note: --wps-only is active, but target is WPA3. WPS attacks are not applicable.')
+                    Color.pl('{+} {C}Proceeding with PMKID and Handshake attacks for WPA3 target.{W}')
+                    if not Configuration.dont_use_pmkid:
+                        attacks.append(AttackPMKID(target))
+                    if not Configuration.use_pmkid_only:
+                        attacks.append(AttackWPA(target))
 
 
         if not attacks:
             Color.pl('{!} {R}Error: {O}Unable to attack: no attacks available')
+            # Mark as failed in session
+            if session and session_mgr:
+                session_mgr.mark_target_failed(session, target.bssid, "No attacks available")
+                session_mgr.save_session(session)
+                Color.pl('{+} {D}Session updated: target {C}%s{D} marked as {R}failed{W}' % target.bssid)
             return True  # Keep attacking other targets (skip)
 
+        attack_successful = False
         while attacks:
             # Needed by infinite attack mode in order to count how many targets were attacked
             target.attacked = True
@@ -134,6 +163,7 @@ class AttackAll(object):
             try:
                 result = attack.run()
                 if result:
+                    attack_successful = True
                     break  # Attack was successful, stop other attacks.
             except (OSError, IOError) as e:
                 # File system or process errors
@@ -167,15 +197,39 @@ class AttackAll(object):
                 if answer == Answer.Continue:
                     continue  # Keep attacking the same target (continue)
                 elif answer == Answer.Skip:
+                    # Mark as failed in session
+                    if session and session_mgr:
+                        session_mgr.mark_target_failed(session, target.bssid, "Skipped by user")
+                        session_mgr.save_session(session)
+                        Color.pl('{+} {D}Session updated: target {C}%s{D} marked as {R}failed{W}' % target.bssid)
                     return True  # Keep attacking other targets (skip)
                 elif answer == Answer.Ignore:
                     from ..model.result import CrackResult
                     CrackResult.ignore_target(target)
+                    # Mark as failed in session
+                    if session and session_mgr:
+                        session_mgr.mark_target_failed(session, target.bssid, "Ignored by user")
+                        session_mgr.save_session(session)
+                        Color.pl('{+} {D}Session updated: target {C}%s{D} marked as {R}failed{W}' % target.bssid)
                     return True  # Ignore current target and keep attacking other targets (ignore)
                 else:
                     return False  # Stop all attacks (exit)
 
-        if attack.success:
+        # Update session after target completion
+        if session and session_mgr:
+            if attack_successful:
+                # Attack was successful, mark as complete
+                crack_result = attack.crack_result if hasattr(attack, 'crack_result') else None
+                session_mgr.mark_target_complete(session, target.bssid, crack_result)
+                session_mgr.save_session(session)
+                Color.pl('{+} {D}Session updated: target {C}%s{D} marked as {G}completed{W}' % target.bssid)
+            else:
+                # All attacks failed, mark as failed
+                session_mgr.mark_target_failed(session, target.bssid, "All attacks failed")
+                session_mgr.save_session(session)
+                Color.pl('{+} {D}Session updated: target {C}%s{D} marked as {R}failed{W}' % target.bssid)
+
+        if attack_successful and attack.success:
             attack.crack_result.save()
 
         return True  # Keep attacking other targets

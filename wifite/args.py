@@ -20,12 +20,98 @@ class Arguments(object):
     def _verbose(self, msg):
         return Color.s(msg) if self.verbose else argparse.SUPPRESS
 
+    def _get_wpa3_examples(self):
+        """Returns WPA3 attack examples and strategy explanations for verbose help."""
+        return Color.s('''
+{C}═══════════════════════════════════════════════════════════════════════════════{W}
+{C}                          WPA3 ATTACK STRATEGIES                                {W}
+{C}═══════════════════════════════════════════════════════════════════════════════{W}
+
+{G}1. Transition Mode Downgrade{W} (Primary - 80-90% success rate)
+   Detects WPA3-Transition networks (support both WPA2 and WPA3)
+   Forces clients to connect using WPA2 instead of WPA3
+   Captures standard WPA2 handshake for cracking
+   Example: {C}wifite --wpa3{W}
+
+{G}2. Dragonblood Exploitation{W} (40-50% success on vulnerable APs)
+   Exploits CVE-2019-13377 and related WPA3 vulnerabilities
+   Identifies weak SAE group configurations
+   Performs timing-based password partitioning
+   Example: {C}wifite --check-dragonblood{W} (scan only)
+
+{G}3. SAE Handshake Capture{W} (Standard - 60-70% success rate)
+   Captures WPA3-SAE authentication handshakes
+   Converts to hashcat format (mode 22000)
+   Performs offline dictionary attack
+   Example: {C}wifite --wpa3 --force-sae{W}
+
+{G}4. Passive Capture{W} (PMF Required - 50-60% success rate)
+   Used when Protected Management Frames (PMF) are required
+   Waits for natural client reconnections (no deauth)
+   Captures SAE handshake passively
+   Example: {C}wifite --wpa3 --nodeauths{W}
+
+{C}═══════════════════════════════════════════════════════════════════════════════{W}
+{C}                            WPA3 USAGE EXAMPLES                                 {W}
+{C}═══════════════════════════════════════════════════════════════════════════════{W}
+
+  {O}Scan and attack all WPA3 networks (auto-strategy selection){W}
+  {C}wifite --wpa3{W}
+
+  {O}Attack only WPA3 networks, skip WPA2-only targets{W}
+  {C}wifite --wpa3-only{W}
+
+  {O}Force SAE capture, disable downgrade attacks{W}
+  {C}wifite --wpa3 --no-downgrade{W}
+
+  {O}Scan for Dragonblood vulnerabilities{W}
+  {C}wifite --check-dragonblood{W}
+
+  {O}Scan for OWE transition mode vulnerabilities{W}
+  {C}wifite --owe{W}
+
+  {O}Passive WPA3 attack (for PMF-required networks){W}
+  {C}wifite --wpa3 --nodeauths{W}
+
+{C}═══════════════════════════════════════════════════════════════════════════════{W}
+{C}                          VULNERABILITY SCANNING                                {W}
+{C}═══════════════════════════════════════════════════════════════════════════════{W}
+
+  {G}Dragonblood Detection:{W}
+    Identifies weak SAE groups (22, 23, 24)
+    Detects CVE-2019-13377 vulnerabilities
+    Command: {C}wifite --check-dragonblood{W}
+
+  {G}OWE Transition Detection:{W}
+    Finds OWE networks with Open fallback
+    Identifies downgrade vulnerabilities
+    Command: {C}wifite --owe{W}
+
+{C}═══════════════════════════════════════════════════════════════════════════════{W}
+{C}                            WPA3 REQUIREMENTS                                   {W}
+{C}═══════════════════════════════════════════════════════════════════════════════{W}
+
+  Required tools for WPA3 attacks:
+    {G}hcxdumptool{W} (v6.0.0+) - SAE frame capture
+    {G}hcxpcapngtool{W} (v6.0.0+) - SAE hash extraction
+    {G}hashcat{W} (v6.0.0+) - WPA3 cracking (mode 22000)
+    {G}tshark{W} (optional) - SAE frame analysis
+
+  Install: {C}apt install hcxdumptool hcxtools hashcat{W}
+
+{C}═══════════════════════════════════════════════════════════════════════════════{W}
+
+  For more information: {C}https://github.com/kimocoder/wifite2{W}
+
+''')
+
     def get_arguments(self):
         """ Returns parser.args() containing all program arguments """
 
         parser = argparse.ArgumentParser(usage=argparse.SUPPRESS,
                                          formatter_class=lambda prog:
-                                         argparse.HelpFormatter(prog, max_help_position=80, width=130))
+                                         argparse.RawDescriptionHelpFormatter(prog, max_help_position=80, width=130),
+                                         epilog=self._get_wpa3_examples() if self.verbose else None)
 
         self._add_global_args(parser.add_argument_group(Color.s('{C}SETTINGS{W}')))
         self._add_wep_args(parser.add_argument_group(Color.s('{C}WEP{W}')))
@@ -325,11 +411,56 @@ class Arguments(object):
                          help=Color.s('Show only {C}WPA/WPA2-encrypted networks{W} (may include {C}WPS{W})'))
         wpa.add_argument('-wpa', help=argparse.SUPPRESS, action='store_true', dest='wpa_filter')
 
+        # WPA3 filtering and targeting
         wpa.add_argument('--wpa3',
                          action='store_true',
                          dest='wpa3_filter',
-                         help=Color.s('Show only {C}WPA3-encrypted networks{W} (SAE/OWE)'))
+                         help=Color.s('Show only {C}WPA3-encrypted networks{W} (SAE/OWE). '
+                                      'Displays WPA3-only and transition mode networks.'))
         wpa.add_argument('-wpa3', help=argparse.SUPPRESS, action='store_true', dest='wpa3_filter')
+
+        wpa.add_argument('--wpa3-only',
+                         action='store_true',
+                         dest='wpa3_only',
+                         help=Color.s('Attack only {C}WPA3-SAE networks{W}, skip WPA2-only targets. '
+                                      'Useful for focusing on WPA3 security testing. (default: {G}off{W})'))
+        wpa.add_argument('-wpa3-only', help=argparse.SUPPRESS, action='store_true', dest='wpa3_only')
+
+        # WPA3 attack strategy options
+        wpa.add_argument('--no-downgrade',
+                         action='store_true',
+                         dest='wpa3_no_downgrade',
+                         help=Color.s('Disable {C}WPA3 transition mode downgrade{W} attacks. '
+                                      'Forces SAE handshake capture instead of attempting to downgrade '
+                                      'to WPA2. Use when testing pure WPA3 security. (default: {G}off{W})'))
+        wpa.add_argument('-no-downgrade', help=argparse.SUPPRESS, action='store_true', dest='wpa3_no_downgrade')
+
+        wpa.add_argument('--force-sae',
+                         action='store_true',
+                         dest='wpa3_force_sae',
+                         help=Color.s('Skip WPA2 attacks on {C}transition mode{W} networks, attack SAE directly. '
+                                      'Captures WPA3-SAE handshakes even when WPA2 is available. (default: {G}off{W})'))
+        wpa.add_argument('-force-sae', help=argparse.SUPPRESS, action='store_true', dest='wpa3_force_sae')
+
+        # WPA3 vulnerability scanning
+        wpa.add_argument('--check-dragonblood',
+                         action='store_true',
+                         dest='wpa3_check_dragonblood',
+                         help=Color.s('Scan for {C}Dragonblood vulnerabilities{W} (CVE-2019-13377) only. '
+                                      'Identifies vulnerable WPA3 implementations without performing attacks. '
+                                      'Checks for weak SAE groups and timing attack susceptibility. (default: {G}off{W})'))
+        wpa.add_argument('-check-dragonblood', help=argparse.SUPPRESS, action='store_true', dest='wpa3_check_dragonblood')
+
+        # WPA3 timing configuration
+        wpa.add_argument('--wpa3-timeout',
+                         action='store',
+                         dest='wpa3_attack_timeout',
+                         metavar='[seconds]',
+                         type=int,
+                         help=self._verbose('Time to wait before failing WPA3-SAE attack. '
+                                            'Applies to SAE handshake capture and downgrade attempts. '
+                                            '(default: {G}%d sec{W})' % self.config.wpa_attack_timeout))
+        wpa.add_argument('-wpa3-timeout', help=argparse.SUPPRESS, action='store', dest='wpa3_attack_timeout', type=int)
 
         wpa.add_argument('--owe',
                          action='store_true',
@@ -533,6 +664,34 @@ class Arguments(object):
                               action='store_true',
                               dest='update_db',
                               help=Color.s('Update the local MAC address prefix database from IEEE registries'))
+        
+        commands.add_argument('--resume',
+                              action='store_true',
+                              dest='resume',
+                              help=Color.s('Resume a previously interrupted attack session. '
+                                         'If multiple sessions exist, displays a list to choose from. '
+                                         'Sessions are automatically saved during attacks and can be resumed '
+                                         'after interruption (Ctrl+C, crash, power loss).'))
+        
+        commands.add_argument('--resume-latest',
+                              action='store_true',
+                              dest='resume_latest',
+                              help=Color.s('Automatically resume the most recent session without prompting. '
+                                         'Useful for quickly continuing the last interrupted attack.'))
+        
+        commands.add_argument('--resume-id',
+                              action='store',
+                              metavar='session_id',
+                              dest='resume_id',
+                              help=Color.s('Resume a specific session by ID (e.g., session_20250126_120000). '
+                                         'Use --resume to see available session IDs.'))
+        
+        commands.add_argument('--clean-sessions',
+                              action='store_true',
+                              dest='clean_sessions',
+                              help=Color.s('Remove old session files (older than 7 days). '
+                                         'Sessions are stored in ~/.wifite/sessions/ and cleaned up '
+                                         'automatically on startup. Use this to manually clean up old sessions.'))
 
 
 if __name__ == '__main__':

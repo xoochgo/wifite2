@@ -58,6 +58,12 @@ class Configuration(object):
     use_bully = None
     use_reaver = None
     use_eviltwin = None
+    
+    # Session resume flags
+    resume = None
+    resume_latest = None
+    resume_id = None
+    clean_sessions = None
     use_pmkid_only = None
     wep_attacks = None
     wep_crack_at_ivs = None
@@ -163,6 +169,13 @@ class Configuration(object):
         cls.wpa_handshake_dir = 'hs'  # Dir to store handshakes
         cls.wpa_strip_handshake = False  # Strip non-handshake packets
         cls.ignore_old_handshakes = False  # Always fetch a new handshake
+        
+        # WPA3-specific variables
+        cls.wpa3_only = False  # Only attack WPA3-SAE networks, skip WPA2-only
+        cls.wpa3_no_downgrade = False  # Disable transition mode downgrade attacks
+        cls.wpa3_force_sae = False  # Skip WPA2 attacks on transition mode
+        cls.wpa3_check_dragonblood = False  # Only scan for Dragonblood vulnerabilities
+        cls.wpa3_attack_timeout = None  # WPA3-specific timeout (defaults to wpa_attack_timeout)
 
         # PMKID variables
         cls.use_pmkid_only = False  # Only use PMKID Capture+Crack attack
@@ -224,6 +237,12 @@ class Configuration(object):
         cls.crack_handshake = False
         cls.update_db = False
         cls.db_filename = 'ieee-oui.txt'
+        
+        # Session resume
+        cls.resume = False
+        cls.resume_latest = False
+        cls.resume_id = None
+        cls.clean_sessions = False
 
         # TUI settings
         cls.use_tui = False  # False = classic (default), True = force TUI
@@ -285,6 +304,16 @@ class Configuration(object):
             cls.crack_handshake = True
         if args.update_db:
             cls.update_db = True
+        
+        # Session resume
+        if args.resume:
+            cls.resume = True
+        if args.resume_latest:
+            cls.resume_latest = True
+        if args.resume_id:
+            cls.resume_id = args.resume_id
+        if args.clean_sessions:
+            cls.clean_sessions = True
     @classmethod
     def validate(cls):
         if cls.use_pmkid_only and cls.wps_only:
@@ -484,6 +513,30 @@ class Configuration(object):
             Color.pl(
                 '{+} {C}option:{W} will stop WPA handshake capture after {G}%d seconds{W}' % args.wpa_attack_timeout)
 
+        # WPA3-specific arguments
+        if hasattr(args, 'wpa3_only') and args.wpa3_only:
+            cls.wpa3_only = True
+            Color.pl('{+} {C}option:{W} will attack {C}WPA3-SAE networks only{W}, skipping WPA2-only targets')
+
+        if hasattr(args, 'wpa3_no_downgrade') and args.wpa3_no_downgrade:
+            cls.wpa3_no_downgrade = True
+            Color.pl('{+} {C}option:{W} will {O}disable transition mode downgrade{W} attacks, forcing SAE capture')
+
+        if hasattr(args, 'wpa3_force_sae') and args.wpa3_force_sae:
+            cls.wpa3_force_sae = True
+            Color.pl('{+} {C}option:{W} will {O}skip WPA2 attacks{W} on transition mode, attacking SAE directly')
+
+        if hasattr(args, 'wpa3_check_dragonblood') and args.wpa3_check_dragonblood:
+            cls.wpa3_check_dragonblood = True
+            Color.pl('{+} {C}option:{W} will {C}scan for Dragonblood vulnerabilities{W} only, skipping attacks')
+
+        if hasattr(args, 'wpa3_attack_timeout') and args.wpa3_attack_timeout:
+            cls.wpa3_attack_timeout = args.wpa3_attack_timeout
+            Color.pl('{+} {C}option:{W} will stop WPA3-SAE attack after {G}%d seconds{W}' % args.wpa3_attack_timeout)
+        else:
+            # Default to wpa_attack_timeout if not specified
+            cls.wpa3_attack_timeout = cls.wpa_attack_timeout
+
         if args.ignore_old_handshakes:
             cls.ignore_old_handshakes = True
             Color.pl('{+} {C}option:{W} will {O}ignore{W} existing handshakes (force capture)')
@@ -608,7 +661,7 @@ class Configuration(object):
             cls.encryption_filter.append('WEP')
         if cls.wpa_filter: # WPA/WPA2
             cls.encryption_filter.append('WPA') 
-        if cls.wpa3_filter:
+        if cls.wpa3_filter or cls.wpa3_only:
             cls.encryption_filter.append('WPA3')
         if cls.owe_filter:
             cls.encryption_filter.append('OWE')
