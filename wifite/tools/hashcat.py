@@ -31,7 +31,8 @@ class Hashcat(Dependency):
         hash_file = HcxPcapngTool.generate_hash_file(handshake_obj, target_is_wpa3_sae, show_command=show_command)
 
         key = None
-        hashcat_mode = '22001' if target_is_wpa3_sae else '22000'  # Use 22000 instead of deprecated 2500
+        # Mode 22000 supports both WPA/WPA2 and WPA3-SAE (WPA-PBKDF2-PMKID+EAPOL)
+        hashcat_mode = '22000'
         file_type_msg = "WPA3-SAE hash" if target_is_wpa3_sae else "WPA/WPA2 hash"
 
         Color.pl(f"{{+}} {{C}}Attempting to crack {file_type_msg} using Hashcat mode {hashcat_mode}{{W}}")
@@ -164,22 +165,21 @@ class HcxPcapngTool(Dependency):
     def generate_hash_file(handshake_obj, is_wpa3_sae, show_command=False):
         """
         Generates a hash file suitable for Hashcat.
-        For WPA/WPA2, generates .hccapx (for mode 2500).
-        For WPA3-SAE, generates a text hash file (for mode 22001).
+        For WPA/WPA2, generates hash file for mode 22000.
+        For WPA3-SAE, generates hash file for mode 22001.
+        Both use the same hcxpcapngtool -o flag, as mode 22000 supports both WPA2 and WPA3-SAE.
         """
-        if is_wpa3_sae:
-            hash_file = Configuration.temp('generated.sae.22001')
-            hcx_args = ['--sae-hccapx', hash_file] # hcxpcapngtool uses --sae-hccapx to output WPA3 SAE hashes
-        else:
-            hash_file = Configuration.temp('generated.22000')
-            hcx_args = ['-o', hash_file]  # For mode 22000, still use -o but different file extension
-
+        # Use mode 22000 format for both WPA2 and WPA3-SAE
+        # Hashcat mode 22000 supports WPA-PBKDF2-PMKID+EAPOL (includes SAE)
+        # Mode 22001 is for WPA-PMK-PMKID+EAPOL (pre-computed PMK)
+        hash_file = Configuration.temp('generated.22000')
+        
         if os.path.exists(hash_file):
             os.remove(hash_file)
 
         command = [
             'hcxpcapngtool',
-            *hcx_args,
+            '-o', hash_file,
             handshake_obj.capfile # Assuming handshake_obj has a capfile attribute
         ]
 
@@ -189,20 +189,18 @@ class HcxPcapngTool(Dependency):
         process = Process(command)
         stdout, stderr = process.get_output()
         if not os.path.exists(hash_file) or os.path.getsize(hash_file) == 0:
-            error_msg = f'Failed to generate {"SAE hash" if is_wpa3_sae else ".hccapx"} file.'
+            error_msg = f'Failed to generate {"SAE hash" if is_wpa3_sae else "WPA/WPA2 hash"} file.'
             error_msg += f'\nOutput from hcxpcapngtool:\nSTDOUT: {stdout}\nSTDERR: {stderr}'
             # Also include tshark check for WPA3
             if is_wpa3_sae:
                 from .tshark import Tshark
-                tshark_check_cmd = ['tshark', '-r', handshake_obj.capfile, '-Y', 'eapol && wlan.rsn.akms.type == 0.0.9f.6'] # OUI 00-0F-AC, type 8 or 9 for SAE
-                # Type 8 (SAE) and Type 9 (SAE FT)
-                # Alternative check might be wlan.rsn.ie.akms.selector == 0x000fac08 for SAE
+                tshark_check_cmd = ['tshark', '-r', handshake_obj.capfile, '-Y', 'wlan.fc.type_subtype == 0x0b'] # Authentication frames
                 tshark_process = Process(tshark_check_cmd)
                 tshark_stdout, _ = tshark_process.get_output()
                 if not tshark_stdout:
-                    error_msg += '\nAdditionally, tshark found no SAE AKM in the capture file. Ensure it is a valid WPA3-SAE handshake.'
+                    error_msg += '\nAdditionally, tshark found no authentication frames in the capture file. Ensure it is a valid WPA3-SAE handshake.'
                 else:
-                    error_msg += '\nTshark output for SAE AKM check:\n' + tshark_stdout
+                    error_msg += f'\nTshark found {len(tshark_stdout.strip().split(chr(10)))} authentication frames in the capture.'
 
             raise ValueError(error_msg)
         return hash_file

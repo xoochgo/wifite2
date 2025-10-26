@@ -20,13 +20,15 @@ from .components import ProgressPanel, LogPanel, EncryptionBadge, SignalStrength
 class AttackView:
     """Interactive attack progress interface with real-time updates."""
 
-    def __init__(self, tui_controller, target):
+    def __init__(self, tui_controller, target, session=None, target_state=None):
         """
         Initialize attack view.
 
         Args:
             tui_controller: TUIController instance for rendering
             target: Target object being attacked
+            session: Optional SessionState for resumed sessions
+            target_state: Optional TargetState for this specific target from session
         """
         self.tui = tui_controller
         self.target = target
@@ -39,7 +41,9 @@ class AttackView:
         self.total_time = None  # Expected total time (optional)
         self._update_counter = 0  # Track updates for periodic cleanup
         self._last_render_time = 0  # Track last render for auto-refresh
-        self._auto_refresh_interval = 1.0  # Auto-refresh every 1 second
+        self._auto_refresh_interval = 0.5  # Auto-refresh every 0.5 seconds (faster updates)
+        self.session = session  # Store session for resume status display
+        self.target_state = target_state  # Store target state for attempt tracking
 
     def start(self):
         """Start the attack view and TUI controller."""
@@ -157,9 +161,9 @@ class AttackView:
         # Create main layout
         layout = Layout()
         layout.split_column(
-            Layout(name="target_info", size=5),
-            Layout(name="progress", size=10),
-            Layout(name="logs"),
+            Layout(name="target_info", size=4),  # Reduced from 5 to 4
+            Layout(name="progress", size=8),     # Reduced from 10 to 8
+            Layout(name="logs"),                 # Takes remaining space (more room now)
             Layout(name="footer", size=3)
         )
 
@@ -192,8 +196,23 @@ class AttackView:
         table.add_row("BSSID:", self.target.bssid)
 
         # Channel and Encryption
-        enc_badge = EncryptionBadge.render(self.target.encryption)
+        enc_badge = EncryptionBadge.render(self.target.encryption, self.target)
         table.add_row("Channel:", f"{self.target.channel}")
+        
+        # Add resume info if this is a resumed target
+        if self.session and self.target_state:
+            # Show attempt number
+            attempt_text = Text()
+            attempt_text.append("Attempt #", style="bold yellow")
+            attempt_text.append(str(self.target_state.attempts + 1), style="yellow")
+            table.add_row("Resume:", attempt_text)
+            
+            # Show original attack time if available
+            if self.target_state.last_attempt:
+                from datetime import datetime
+                last_time = datetime.fromtimestamp(self.target_state.last_attempt)
+                time_str = last_time.strftime("%Y-%m-%d %H:%M:%S")
+                table.add_row("Last Try:", time_str)
         
         # Create a second column for encryption and power
         info_text = Text()
@@ -206,9 +225,14 @@ class AttackView:
         power_dbm = self.target.power - 100 if self.target.power > 0 else self.target.power
         info_text.append(SignalStrengthBar.render(power_dbm))
 
+        # Add resume indicator to title if this is a resumed session
+        title_text = f"[bold cyan]Target: {essid}[/bold cyan]"
+        if self.session:
+            title_text = f"[bold magenta]RESUMED[/bold magenta] | {title_text}"
+
         return Panel(
             table,
-            title=f"[bold cyan]Target: {essid}[/bold cyan]",
+            title=title_text,
             subtitle=info_text,
             border_style="cyan",
             padding=(0, 1)
@@ -306,8 +330,8 @@ class AttackView:
 class WEPAttackView(AttackView):
     """Specialized view for WEP attacks."""
 
-    def __init__(self, tui_controller, target):
-        super().__init__(tui_controller, target)
+    def __init__(self, tui_controller, target, session=None, target_state=None):
+        super().__init__(tui_controller, target, session, target_state)
         self.attack_type = "WEP Attack"
         self.ivs_collected = 0
         self.ivs_needed = 10000  # Default
@@ -384,8 +408,8 @@ class WEPAttackView(AttackView):
 class WPAAttackView(AttackView):
     """Specialized view for WPA attacks."""
 
-    def __init__(self, tui_controller, target):
-        super().__init__(tui_controller, target)
+    def __init__(self, tui_controller, target, session=None, target_state=None):
+        super().__init__(tui_controller, target, session, target_state)
         self.attack_type = "WPA Handshake Capture"
         self.has_handshake = False
         self.clients = 0
@@ -455,8 +479,8 @@ class WPAAttackView(AttackView):
 class WPSAttackView(AttackView):
     """Specialized view for WPS attacks."""
 
-    def __init__(self, tui_controller, target):
-        super().__init__(tui_controller, target)
+    def __init__(self, tui_controller, target, session=None, target_state=None):
+        super().__init__(tui_controller, target, session, target_state)
         self.attack_type = "WPS Attack"
         self.pins_tried = 0
         self.total_pins = 11000  # Default for full PIN space
@@ -552,8 +576,8 @@ class WPSAttackView(AttackView):
 class PMKIDAttackView(AttackView):
     """Specialized view for PMKID attacks."""
 
-    def __init__(self, tui_controller, target):
-        super().__init__(tui_controller, target)
+    def __init__(self, tui_controller, target, session=None, target_state=None):
+        super().__init__(tui_controller, target, session, target_state)
         self.attack_type = "PMKID Capture"
         self.has_pmkid = False
         self.attempts = 0
@@ -616,3 +640,191 @@ class PMKIDAttackView(AttackView):
         """
         self.max_attempts = max_attempts
         self.update_pmkid_status(self.has_pmkid)
+
+
+class WPA3AttackView(AttackView):
+    """Specialized view for WPA3-SAE attacks."""
+
+    def __init__(self, tui_controller, target, session=None, target_state=None):
+        super().__init__(tui_controller, target, session, target_state)
+        self.attack_type = "WPA3-SAE Attack"
+        self.attack_strategy = "Unknown"
+        self.downgrade_attempted = False
+        self.downgrade_success = False
+        self.sae_frames_captured = 0
+        self.has_sae_handshake = False
+        self.pmf_status = "unknown"
+        self.is_transition = False
+        self.clients = 0
+        self.deauths_sent = 0
+
+    def set_attack_strategy(self, strategy: str):
+        """
+        Set the WPA3 attack strategy being used.
+
+        Args:
+            strategy: Strategy name (e.g., "downgrade", "sae_capture", "passive", "dragonblood")
+        """
+        self.attack_strategy = strategy
+        
+        # Update attack type based on strategy
+        if strategy == "downgrade":
+            self.attack_type = "WPA3 Downgrade Attack"
+        elif strategy == "sae_capture":
+            self.attack_type = "WPA3-SAE Handshake Capture"
+        elif strategy == "passive":
+            self.attack_type = "WPA3-SAE Passive Capture"
+        elif strategy == "dragonblood":
+            self.attack_type = "WPA3 Dragonblood Exploit"
+        else:
+            self.attack_type = f"WPA3 Attack ({strategy})"
+        
+        self._update_display()
+
+    def update_downgrade_status(self, attempted: bool, success: bool = False):
+        """
+        Update downgrade attack status.
+
+        Args:
+            attempted: Whether downgrade was attempted
+            success: Whether downgrade was successful
+        """
+        self.downgrade_attempted = attempted
+        self.downgrade_success = success
+        self._update_display()
+
+    def update_sae_capture_status(self, frames_captured: int, has_handshake: bool = False):
+        """
+        Update SAE handshake capture status.
+
+        Args:
+            frames_captured: Number of SAE frames captured
+            has_handshake: Whether complete handshake has been captured
+        """
+        self.sae_frames_captured = frames_captured
+        self.has_sae_handshake = has_handshake
+        self._update_display()
+
+    def update_client_status(self, clients: int, deauths_sent: int = None):
+        """
+        Update client and deauth status.
+
+        Args:
+            clients: Number of clients detected
+            deauths_sent: Number of deauth packets sent (optional)
+        """
+        self.clients = clients
+        if deauths_sent is not None:
+            self.deauths_sent = deauths_sent
+        self._update_display()
+
+    def set_pmf_status(self, pmf_status: str):
+        """
+        Set PMF (Protected Management Frames) status.
+
+        Args:
+            pmf_status: PMF status ('required', 'optional', 'disabled')
+        """
+        self.pmf_status = pmf_status
+        self._update_display()
+
+    def set_transition_mode(self, is_transition: bool):
+        """
+        Set whether target is in WPA3 transition mode.
+
+        Args:
+            is_transition: Whether target supports both WPA2 and WPA3
+        """
+        self.is_transition = is_transition
+        self._update_display()
+
+    def _update_display(self):
+        """Update the display with current WPA3 attack status."""
+        # Determine status message based on attack strategy and state
+        if self.attack_strategy == "downgrade":
+            if self.downgrade_success:
+                status = "Downgrade successful! Capturing WPA2 handshake..."
+                progress = 0.7
+            elif self.downgrade_attempted:
+                status = "Downgrade failed, falling back to SAE capture"
+                progress = 0.3
+            else:
+                status = "Attempting WPA3 → WPA2 downgrade..."
+                progress = 0.2
+        elif self.attack_strategy == "passive":
+            if self.has_sae_handshake:
+                status = "SAE handshake captured (passive mode)!"
+                progress = 1.0
+            else:
+                status = f"Passive capture (PMF required) - waiting for clients..."
+                progress = 0.4
+        elif self.attack_strategy == "dragonblood":
+            status = "Attempting Dragonblood vulnerability exploit..."
+            progress = 0.5
+        else:  # sae_capture or other
+            if self.has_sae_handshake:
+                status = "SAE handshake captured successfully!"
+                progress = 1.0
+            elif self.sae_frames_captured > 0:
+                status = f"Capturing SAE frames ({self.sae_frames_captured} captured)..."
+                progress = 0.6
+            elif self.clients == 0:
+                status = "Waiting for clients..."
+                progress = 0.2
+            else:
+                status = "Monitoring for SAE authentication..."
+                progress = 0.4
+
+        # Build metrics dictionary
+        metrics = {
+            'Strategy': self.attack_strategy.replace('_', ' ').title(),
+            'Clients': self.clients,
+        }
+
+        # Add transition mode indicator
+        if self.is_transition:
+            metrics['Mode'] = 'Transition (WPA2/WPA3)'
+        else:
+            metrics['Mode'] = 'WPA3-Only'
+
+        # Add PMF status
+        if self.pmf_status == 'required':
+            metrics['PMF'] = '✓ Required (deauth disabled)'
+        elif self.pmf_status == 'optional':
+            metrics['PMF'] = '~ Optional'
+        else:
+            metrics['PMF'] = '✗ Disabled'
+
+        # Add downgrade status if applicable
+        if self.attack_strategy == "downgrade" or self.downgrade_attempted:
+            if self.downgrade_success:
+                metrics['Downgrade'] = '✓ Success'
+            elif self.downgrade_attempted:
+                metrics['Downgrade'] = '✗ Failed'
+            else:
+                metrics['Downgrade'] = 'In Progress'
+
+        # Add SAE capture status
+        if self.attack_strategy in ["sae_capture", "passive"] or self.sae_frames_captured > 0:
+            metrics['SAE Frames'] = self.sae_frames_captured
+            metrics['SAE Handshake'] = '✓' if self.has_sae_handshake else '✗'
+
+        # Add deauth count if applicable
+        if self.pmf_status != 'required' and self.deauths_sent > 0:
+            metrics['Deauths Sent'] = self.deauths_sent
+
+        self.update_progress({
+            'progress': progress,
+            'status': status,
+            'metrics': metrics
+        })
+
+    def increment_deauths(self, count: int = 1):
+        """
+        Increment deauth counter.
+
+        Args:
+            count: Number of deauths to add
+        """
+        self.deauths_sent += count
+        self._update_display()

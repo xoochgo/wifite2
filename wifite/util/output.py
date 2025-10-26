@@ -245,3 +245,106 @@ def check_terminal_support():
         True if terminal supports TUI, False otherwise
     """
     return OutputManager._check_terminal_support()
+
+
+# WPA3-specific logging helpers
+def log_wpa3_detection(target, wpa3_info):
+    """
+    Log WPA3 detection results to appropriate output.
+    
+    Args:
+        target: Target object
+        wpa3_info: WPA3Info object with detection results
+    """
+    from ..util.color import Color
+    from ..util.tui_logger import log_wpa3_detection as tui_log_wpa3_detection
+    
+    # Log to TUI logger if available
+    if OutputManager.is_tui_mode():
+        wpa3_dict = {
+            'has_wpa3': wpa3_info.has_wpa3,
+            'is_transition': wpa3_info.is_transition,
+            'pmf_status': wpa3_info.pmf_status,
+            'dragonblood_vulnerable': wpa3_info.dragonblood_vulnerable
+        }
+        tui_log_wpa3_detection(target.bssid, wpa3_dict)
+    
+    # Also log to classic output for debugging
+    if wpa3_info.has_wpa3:
+        mode = "Transition" if wpa3_info.is_transition else "WPA3-Only"
+        Color.pl('{+} {C}WPA3 detected: {W}%s {C}Mode: {W}%s {C}PMF: {W}%s' % 
+                 (target.bssid, mode, wpa3_info.pmf_status))
+
+
+def log_wpa3_strategy(target, strategy, reason=None):
+    """
+    Log WPA3 attack strategy selection.
+    
+    Args:
+        target: Target object
+        strategy: Selected strategy name
+        reason: Optional reason for selection
+    """
+    from ..util.color import Color
+    from ..util.tui_logger import log_wpa3_strategy as tui_log_wpa3_strategy
+    
+    # Log to TUI logger if available
+    if OutputManager.is_tui_mode():
+        tui_log_wpa3_strategy(target.bssid, strategy, reason)
+    
+    # Log to classic output
+    msg = '{+} {C}WPA3 Strategy: {W}%s' % strategy.replace('_', ' ').title()
+    if reason:
+        msg += ' {C}({W}%s{C})' % reason
+    Color.pl(msg)
+
+
+def log_wpa3_downgrade(target, success, details=None):
+    """
+    Log WPA3 downgrade attempt result.
+    
+    Args:
+        target: Target object
+        success: Whether downgrade was successful
+        details: Optional additional details
+    """
+    from ..util.color import Color
+    from ..util.tui_logger import log_wpa3_downgrade as tui_log_wpa3_downgrade
+    
+    # Log to TUI logger if available
+    if OutputManager.is_tui_mode():
+        tui_log_wpa3_downgrade(target.bssid, success, details)
+    
+    # Log to classic output
+    if success:
+        msg = '{+} {G}Downgrade successful!{W}'
+    else:
+        msg = '{!} {O}Downgrade failed{W}'
+    
+    if details:
+        msg += ' {C}({W}%s{C})' % details
+    
+    Color.pl(msg)
+
+
+def log_wpa3_sae_capture(target, frame_type, frame_count=None):
+    """
+    Log SAE frame capture event.
+    
+    Args:
+        target: Target object
+        frame_type: Type of SAE frame captured
+        frame_count: Optional total frame count
+    """
+    from ..util.color import Color
+    from ..util.tui_logger import log_wpa3_sae_capture as tui_log_wpa3_sae_capture
+    
+    # Log to TUI logger if available
+    if OutputManager.is_tui_mode():
+        tui_log_wpa3_sae_capture(target.bssid, frame_type, frame_count)
+    
+    # Log to classic output
+    msg = '{+} {C}SAE %s frame captured' % frame_type.title()
+    if frame_count is not None:
+        msg += ' {C}(total: {W}%d{C})' % frame_count
+    Color.pl(msg)

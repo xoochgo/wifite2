@@ -107,8 +107,14 @@ class Reaver(Attack, Dependency):
             else:
                 self.attack_view.set_attack_type("WPS PIN Attack (Reaver)")
                 self.attack_view.add_log("Starting WPS PIN brute-force attack with Reaver")
-            self.attack_view.add_log(f"Target: {self.target.essid} ({self.target.bssid})")
-            self.attack_view.add_log(f"Channel: {self.target.channel}")
+            
+            # Handle hidden ESSID
+            essid_display = self.target.essid if self.target.essid else "<hidden ESSID>"
+            self.attack_view.add_log(f"Target: {essid_display} ({self.target.bssid})")
+            
+            # Handle invalid channel
+            channel_display = self.target.channel if self.target.channel and str(self.target.channel) != '-1' else "unknown"
+            self.attack_view.add_log(f"Channel: {channel_display}")
 
         with Airodump(channel=self.target.channel,
                       target_bssid=self.target.bssid,

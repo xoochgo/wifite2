@@ -7,12 +7,15 @@ from ..config import Configuration
 from ..model.handshake import Handshake
 from ..model.pmkid_result import CrackResultPMKID
 from ..model.wpa_result import CrackResultWPA
+from ..model.sae_result import CrackResultSAE
+from ..model.sae_handshake import SAEHandshake
 from ..tools.aircrack import Aircrack
 from ..tools.cowpatty import Cowpatty
 from ..tools.hashcat import Hashcat, HcxPcapngTool
 from ..tools.john import John
 from ..util.color import Color
 from ..util.process import Process
+from ..util.sae_crack import SAECracker
 
 
 # TODO: Bring back the 'print' option, for easy copy/pasting. Just one-liners people can paste into terminal.
@@ -22,7 +25,8 @@ class CrackHelper:
 
     TYPES = {
         '4-WAY': '4-Way Handshake',
-        'PMKID': 'PMKID Hash'
+        'PMKID': 'PMKID Hash',
+        'SAE': 'WPA3-SAE Handshake'
     }
 
     # Tools for cracking & their dependencies. (RaduNico's code btw!)
@@ -56,6 +60,8 @@ class CrackHelper:
 
         hs_to_crack = cls.get_user_selection(handshakes)
         all_pmkid = all(hs['type'] == 'PMKID' for hs in hs_to_crack)
+        all_sae = all(hs['type'] == 'SAE' for hs in hs_to_crack)
+        has_sae = any(hs['type'] == 'SAE' for hs in hs_to_crack)
 
         # Identify missing tools
         missing_tools = []
@@ -72,8 +78,11 @@ class CrackHelper:
                 dep_list = ', '.join([dep.dependency_name for dep in deps])
                 Color.pl('     {R}* {R}%s {W}({O}%s{W})' % (tool, dep_list))
 
-        if all_pmkid:
-            Color.pl('{!} {O}Note: PMKID hashes can only be cracked using {C}hashcat{W}')
+        if all_pmkid or all_sae or has_sae:
+            if all_pmkid:
+                Color.pl('{!} {O}Note: PMKID hashes can only be cracked using {C}hashcat{W}')
+            if all_sae or has_sae:
+                Color.pl('{!} {O}Note: WPA3-SAE handshakes can only be cracked using {C}hashcat{W}')
             tool_name = 'hashcat'
         else:
             Color.p('\n{+} Enter the {C}cracking tool{W} to use ({C}%s{W}): {G}' % (
@@ -87,8 +96,8 @@ class CrackHelper:
 
         try:
             for hs in hs_to_crack:
-                if tool_name != 'hashcat' and hs['type'] == 'PMKID' and 'hashcat' in missing_tools:
-                    Color.pl('{!} {O}Hashcat is missing, therefore we cannot crack PMKID hash{W}')
+                if tool_name != 'hashcat' and hs['type'] in ['PMKID', 'SAE'] and 'hashcat' in missing_tools:
+                    Color.pl('{!} {O}Hashcat is missing, therefore we cannot crack %s{W}' % hs['type'])
                     continue
                 cls.crack(hs, tool_name)
         except KeyboardInterrupt:
@@ -129,9 +138,13 @@ class CrackHelper:
                 skipped_cracked_files += 1
                 continue
 
+            # Determine handshake type
             if hs_file.endswith('.cap'):
-                # WPA Handshake
-                hs_type = '4-WAY'
+                # Check if it's a SAE handshake or regular WPA
+                if hs_file.startswith('sae_handshake_'):
+                    hs_type = 'SAE'
+                else:
+                    hs_type = '4-WAY'
             elif hs_file.endswith('.22000'):
                 # PMKID hash
                 if not Process.exists('hashcat'):
@@ -154,6 +167,7 @@ class CrackHelper:
                 essid_discovery = handshakenew.essid
 
                 essid = essid if essid_discovery is None else essid_discovery
+            
             handshake = {
                 'filename': os.path.join(hs_dir, hs_file),
                 'bssid': bssid.replace('-', ':'),
@@ -161,15 +175,6 @@ class CrackHelper:
                 'date': date,
                 'type': hs_type
             }
-
-            if hs_file.endswith('.cap'):
-                # WPA Handshake
-                handshake['type'] = '4-WAY'
-            elif hs_file.endswith('.22000'):
-                # PMKID hash
-                handshake['type'] = 'PMKID'
-            else:
-                continue
 
             handshakes.append(handshake)
 
@@ -238,8 +243,10 @@ class CrackHelper:
             crack_result = cls.crack_pmkid(hs, tool)
         elif hs['type'] == '4-WAY':
             crack_result = cls.crack_4way(hs, tool)
+        elif hs['type'] == 'SAE':
+            crack_result = cls.crack_sae(hs, tool)
         else:
-            raise ValueError(f'Cannot crack handshake: Type is not PMKID or 4-WAY. Handshake={hs}')
+            raise ValueError(f'Cannot crack handshake: Type is not PMKID, 4-WAY, or SAE. Handshake={hs}')
 
         if crack_result is None:
             # Failed to crack
@@ -286,6 +293,33 @@ class CrackHelper:
 
         if key2 is not None:
             return CrackResultPMKID(hs['bssid'], hs['essid'], hs['filename'], key2)
+        else:
+            return None
+
+    @classmethod
+    def crack_sae(cls, hs, tool):
+        """Crack WPA3-SAE handshake using hashcat."""
+        if tool != 'hashcat':
+            Color.pl('{!} {O}Note: WPA3-SAE handshakes can only be cracked using {C}hashcat{W}')
+            return None
+        
+        # Create SAEHandshake object
+        sae_handshake = SAEHandshake(
+            capfile=hs['filename'],
+            bssid=hs['bssid'],
+            essid=hs['essid']
+        )
+        
+        # Crack using SAECracker
+        key = SAECracker.crack_sae_handshake(
+            sae_handshake,
+            wordlist=Configuration.wordlist,
+            show_command=True,
+            verbose=True
+        )
+        
+        if key is not None:
+            return CrackResultSAE(hs['bssid'], hs['essid'], hs['filename'], key)
         else:
             return None
 

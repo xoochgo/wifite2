@@ -197,8 +197,14 @@ class AttackPMKID(Attack):
         if self.view:
             self.view.start()
             self.view.set_attack_type("PMKID Attack")
-            self.view.add_log(f"Starting PMKID attack on {self.target.essid} ({self.target.bssid})")
-            self.view.add_log(f"Channel: {self.target.channel}")
+            
+            # Handle hidden ESSID
+            essid_display = self.target.essid if self.target.essid else "<hidden ESSID>"
+            self.view.add_log(f"Starting PMKID attack on {essid_display} ({self.target.bssid})")
+            
+            # Handle invalid channel
+            channel_display = self.target.channel if self.target.channel and str(self.target.channel) != '-1' else "unknown"
+            self.view.add_log(f"Channel: {channel_display}")
         
         if self.do_airCRACK:
             self.run_aircrack()

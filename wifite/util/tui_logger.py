@@ -131,6 +131,67 @@ class TUILogger:
         """Check if debug mode is active."""
         return cls._debug_mode
 
+    @classmethod
+    def log_wpa3_detection(cls, bssid: str, wpa3_info: dict):
+        """
+        Log WPA3 detection results.
+
+        Args:
+            bssid: Target BSSID
+            wpa3_info: Dictionary with WPA3 detection information
+        """
+        details = f"BSSID={bssid}, WPA3={wpa3_info.get('has_wpa3', False)}, " \
+                  f"Transition={wpa3_info.get('is_transition', False)}, " \
+                  f"PMF={wpa3_info.get('pmf_status', 'unknown')}, " \
+                  f"Dragonblood={wpa3_info.get('dragonblood_vulnerable', False)}"
+        cls.info(f"WPA3_DETECTION: {details}")
+
+    @classmethod
+    def log_wpa3_strategy(cls, bssid: str, strategy: str, reason: str = None):
+        """
+        Log WPA3 attack strategy selection.
+
+        Args:
+            bssid: Target BSSID
+            strategy: Selected strategy
+            reason: Optional reason for strategy selection
+        """
+        details = f"BSSID={bssid}, Strategy={strategy}"
+        if reason:
+            details += f", Reason={reason}"
+        cls.info(f"WPA3_STRATEGY: {details}")
+
+    @classmethod
+    def log_wpa3_downgrade(cls, bssid: str, success: bool, details: str = None):
+        """
+        Log WPA3 downgrade attempt.
+
+        Args:
+            bssid: Target BSSID
+            success: Whether downgrade was successful
+            details: Optional additional details
+        """
+        status = "SUCCESS" if success else "FAILED"
+        msg = f"WPA3_DOWNGRADE: BSSID={bssid}, Status={status}"
+        if details:
+            msg += f", Details={details}"
+        cls.info(msg)
+
+    @classmethod
+    def log_wpa3_sae_capture(cls, bssid: str, frame_type: str, frame_count: int = None):
+        """
+        Log SAE frame capture events.
+
+        Args:
+            bssid: Target BSSID
+            frame_type: Type of SAE frame (commit, confirm, complete)
+            frame_count: Optional frame count
+        """
+        msg = f"WPA3_SAE_CAPTURE: BSSID={bssid}, FrameType={frame_type}"
+        if frame_count is not None:
+            msg += f", Count={frame_count}"
+        cls.info(msg)
+
 
 # Convenience functions
 def log_tui_event(event_type: str, details: str = None):
@@ -146,3 +207,23 @@ def log_tui_error(message: str, exception: Exception = None):
 def log_tui_debug(message: str):
     """Log a TUI debug message."""
     TUILogger.debug(message)
+
+
+def log_wpa3_detection(bssid: str, wpa3_info: dict):
+    """Log WPA3 detection results."""
+    TUILogger.log_wpa3_detection(bssid, wpa3_info)
+
+
+def log_wpa3_strategy(bssid: str, strategy: str, reason: str = None):
+    """Log WPA3 attack strategy selection."""
+    TUILogger.log_wpa3_strategy(bssid, strategy, reason)
+
+
+def log_wpa3_downgrade(bssid: str, success: bool, details: str = None):
+    """Log WPA3 downgrade attempt."""
+    TUILogger.log_wpa3_downgrade(bssid, success, details)
+
+
+def log_wpa3_sae_capture(bssid: str, frame_type: str, frame_count: int = None):
+    """Log SAE frame capture events."""
+    TUILogger.log_wpa3_sae_capture(bssid, frame_type, frame_count)

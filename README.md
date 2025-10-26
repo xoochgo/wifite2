@@ -19,8 +19,10 @@ Wifite is designed to use all known methods for retrieving the password of a wir
    WPS: The [Offline NULL PIN attack](https://github.com/t6x/reaver-wps-fork-t6x/wiki/Introducing-a-new-way-to-crack-WPS:-Option--p-with-an-Arbitrary-String)
 2. WPA: The [WPA Handshake Capture](https://hashcat.net/forum/thread-7717.html) + offline crack.
 3. WPA: The [PMKID Hash Capture](https://hashcat.net/forum/thread-7717.html) + offline crack.
-4. WEP: Various known attacks against WEP, including *fragmentation*, *chop-chop*, *aireplay*, etc.
-5. WIFI Signal jammer, block specific accesspoints or multiple.
+4. WPA3: The [SAE Handshake Capture](https://hashcat.net/forum/thread-7717.html) + offline crack.
+5. WPA3: Transition mode downgrade attacks (force WPA2 on mixed networks).
+6. WEP: Various known attacks against WEP, including *fragmentation*, *chop-chop*, *aireplay*, etc.
+7. WIFI Signal jammer, block specific accesspoints or multiple.
    signal jamming only works for specific Atheros WiFi chipsets. 
 
 Run wifite, select your targets, and Wifite will automatically start trying to capture or crack the password.
@@ -81,9 +83,10 @@ Second, only the latest versions of these programs are supported and must be ins
    * Bully is also used to fetch PSK if `reaver` cannot after cracking WPS PIN.
 * [`john`](https://www.openwall.com/john): For CPU (OpenCL)/GPU cracking passwords fast.
 * [`coWPAtty`](https://tools.kali.org/wireless-attacks/cowpatty): For detecting handshake captures.
-* [`hashcat`](https://hashcat.net/): For cracking PMKID hashes.
-   * [`hcxdumptool`](https://github.com/ZerBea/hcxdumptool): For capturing PMKID hashes.
-   * [`hcxpcapngtool`](https://github.com/ZerBea/hcxtools): For converting PMKID packet captures into `hashcat`'s format.
+* [`hashcat`](https://hashcat.net/): For cracking PMKID hashes and WPA3-SAE hashes.
+   * [`hcxdumptool`](https://github.com/ZerBea/hcxdumptool): For capturing PMKID hashes and WPA3-SAE handshakes.
+   * [`hcxpcapngtool`](https://github.com/ZerBea/hcxtools): For converting PMKID and SAE packet captures into `hashcat`'s format.
+   * **Note:** For WPA3 support, you need `hcxdumptool` v6.0.0+ and `hashcat` v6.0.0+ with mode 22000 support.
 * [`macchanger`](https://github.com/alobbs/macchanger): For randomizing MAC addresses to avoid detection and improve anonymity.
 * [`pixiewps`](https://github.com/wiire-a/pixiewps): For WPS Pixie-Dust attacks (alternative implementation).
 
@@ -162,6 +165,10 @@ Features
 * **WPA/WPA2 Handshake Capture** - Traditional 4-way handshake attack (enabled by default, force with: `--no-wps`)
 * **WEP Attacks** - Multiple methods: replay, chopchop, fragment, hirte, p0841, caffe-latte
 * **WPA3-SAE Support** - Modern WPA3 hash capture and cracking
+  * **Transition Mode Downgrade** - Force WPA2 on mixed WPA2/WPA3 networks (highest success rate)
+  * **SAE Handshake Capture** - Capture WPA3-SAE authentication for offline cracking
+  * **PMF Handling** - Automatic detection and handling of Protected Management Frames
+  * **Dragonblood Detection** - Identify networks vulnerable to known WPA3 exploits
 
 ### Smart Features
 * **Automatic Target Detection** - Scans and identifies vulnerable networks
@@ -186,8 +193,191 @@ Features
 * **Flexible Targeting** - Target specific networks by BSSID, ESSID, or channel
 * **Verbose Logging** - Detailed output for learning and debugging (`-v`, `-vv`, `-vvv`)
 * **Automation Support** - Scriptable with various timeout and retry options
+* **Session Resume** - Continue interrupted attacks from where you left off
+  * Automatically saves progress during attacks
+  * Resume after Ctrl+C, crashes, or power loss
+  * Multiple session management with selection interface
+  * Automatic cleanup of old sessions (7+ days)
 
 **💡 TIP:** Use `wifite -h -v` to see all available options and advanced settings!
+
+### WPA3 Attack Support
+
+Wifite now includes comprehensive WPA3-SAE attack capabilities with automatic detection and intelligent strategy selection.
+
+#### WPA3 Attack Strategies
+
+Wifite automatically selects the best attack strategy based on the target network:
+
+1. **Transition Mode Downgrade (80-90% success rate)**
+   - Automatically detects WPA2/WPA3 mixed networks
+   - Forces clients to connect using WPA2 instead of WPA3
+   - Captures standard WPA2 handshake for cracking
+   - Fastest and most reliable method for transition mode networks
+
+2. **SAE Handshake Capture (60-70% success rate)**
+   - Captures WPA3-SAE authentication handshakes
+   - Converts to hashcat format (mode 22000) for offline cracking
+   - Works on pure WPA3 networks
+   - Requires GPU for efficient cracking
+
+3. **Passive Capture (50-60% success rate)**
+   - Used when PMF (Protected Management Frames) is required
+   - Waits for natural client reconnections
+   - No deauthentication attacks possible
+   - Slower but works on PMF-protected networks
+
+4. **Dragonblood Exploitation (40-50% on vulnerable APs)**
+   - Detects known WPA3 vulnerabilities (CVE-2019-13377, etc.)
+   - Attempts timing-based attacks on vulnerable implementations
+   - Automatically used when vulnerabilities detected
+
+#### Basic WPA3 Usage
+
+```bash
+# Attack all networks including WPA3 (automatic detection)
+sudo wifite
+
+# Target only WPA3 networks
+sudo wifite --wpa3-only
+
+# Force SAE capture (skip downgrade attempts on transition mode)
+sudo wifite --force-sae
+
+# Disable downgrade attacks (pure SAE only)
+sudo wifite --no-downgrade
+
+# Check for Dragonblood vulnerabilities without attacking
+sudo wifite --check-dragonblood
+```
+
+#### WPA3 Tool Requirements
+
+For WPA3 support, you need these tools with minimum versions:
+
+* **hcxdumptool v6.0.0+** - For capturing SAE handshakes
+* **hcxpcapngtool v6.0.0+** - For converting SAE captures to hashcat format
+* **hashcat v6.0.0+** - For cracking SAE hashes (mode 22000)
+
+Install on Kali Linux:
+```bash
+sudo apt update
+sudo apt install hcxdumptool hcxtools hashcat
+```
+
+**📖 For detailed installation instructions, version requirements, and troubleshooting, see [WPA3 Tool Requirements Guide](docs/WPA3_TOOL_REQUIREMENTS.md)**
+
+#### Understanding WPA3 Network Types
+
+* **WPA3-only** - Pure WPA3 networks (requires SAE capture)
+* **WPA3-Transition** - Mixed WPA2/WPA3 (downgrade attack possible)
+* **PMF Required** - Protected Management Frames enabled (no deauth possible)
+* **PMF Optional** - PMF supported but not required (deauth works)
+
+Wifite automatically detects these configurations and selects the optimal attack strategy.
+
+#### WPA3 Attack Examples
+
+```bash
+# Attack a specific WPA3 network by BSSID
+sudo wifite -b AA:BB:CC:DD:EE:FF
+
+# Attack WPA3 with custom timeout (default: 300 seconds)
+sudo wifite --wpa3-timeout 600
+
+# Crack captured WPA3 handshake with wordlist
+sudo wifite --crack --dict /path/to/wordlist.txt
+
+# Verbose mode to see WPA3 detection and strategy selection
+sudo wifite -vv
+```
+
+#### WPA3 Troubleshooting
+
+**No WPA3 networks detected:**
+- Ensure your wireless adapter supports monitor mode on 5GHz (many WPA3 networks use 5GHz)
+- Use `-5` flag to scan 5GHz channels
+- Verify hcxdumptool is installed and up-to-date
+
+**PMF prevents deauthentication:**
+- This is expected behavior on WPA3 networks with PMF required
+- Wifite automatically switches to passive capture mode
+- Wait for natural client reconnections (may take longer)
+
+**SAE handshake capture fails:**
+- Ensure hcxdumptool v6.0.0+ is installed
+- Check that clients are actively connecting to the network
+- Try increasing timeout with `--wpa3-timeout`
+
+**Hashcat cracking is slow:**
+- WPA3-SAE cracking is computationally intensive
+- Use GPU acceleration (CUDA/OpenCL) for best performance
+- Consider using cloud-based cracking services for large wordlists
+
+### Resume Feature
+
+Wifite automatically saves your attack progress and allows you to resume interrupted sessions:
+
+#### Basic Usage
+```bash
+# Start an attack (progress is automatically saved)
+sudo wifite
+
+# If interrupted (Ctrl+C, crash, power loss), resume with:
+sudo wifite --resume
+
+# Resume the most recent session automatically:
+sudo wifite --resume-latest
+
+# Resume a specific session by ID:
+sudo wifite --resume-id session_20250126_120000
+```
+
+#### How It Works
+* **Automatic Saving** - Progress is saved after each target completion
+* **Session Files** - Stored in `~/.wifite/sessions/` with secure permissions (600)
+* **Smart Filtering** - Automatically skips completed and failed targets
+* **Configuration Restore** - Preserves original attack parameters and settings
+* **Multiple Sessions** - Manage multiple interrupted sessions with selection interface
+
+#### Session Management
+```bash
+# List and choose from available sessions
+sudo wifite --resume
+
+# Clean up old session files (older than 7 days)
+sudo wifite --clean-sessions
+```
+
+#### What's Saved
+* Target list and attack progress
+* Completed and failed targets
+* Attack configuration (wordlist, timeouts, attack types)
+* Original interface and settings
+
+#### What's NOT Saved (for security)
+* Captured passwords or keys
+* Handshake files
+* PMKID hashes
+
+#### Troubleshooting
+
+**Q: No session files found**
+* Start a new attack first - sessions are created after target selection
+* Check `~/.wifite/sessions/` directory exists and has proper permissions
+
+**Q: Corrupted session file**
+* Wifite will detect and offer to delete corrupted files
+* Use `--clean-sessions` to manually remove problematic sessions
+
+**Q: Interface changed**
+* Wifite will detect if the original interface is unavailable
+* You'll be prompted to use the current interface instead
+
+**Q: Session not resuming correctly**
+* Ensure you're using the same version of wifite
+* Check that all required tools are still installed
+* Use `--resume` to see session details before confirming
 
 Performance Tips
 -----------------
@@ -202,6 +392,8 @@ Performance Tips
 * **PMKID first** - Try `--pmkid-only` for fastest WPA/WPA2 attacks (no clients needed)
 * **Skip WPS on modern routers** - Use `--no-wps` on newer routers that likely have WPS disabled
 * **Use wordlists efficiently** - Start with common passwords, use `--dict <wordlist>`
+* **WPA3 transition mode** - Downgrade attacks are faster than pure SAE capture
+* **Target WPA2 first** - WPA2 is faster to crack than WPA3-SAE
 
 ### Resource Management
 * **Monitor system resources** - Watch CPU and memory usage during long scans
@@ -253,6 +445,19 @@ Troubleshooting
 - Ensure clients are connected to the target network
 - Use `--deauth-count` to increase deauth attempts
 - Some networks may require longer capture times
+
+**WPA3 attack issues:**
+- Verify hcxdumptool v6.0.0+ and hashcat v6.0.0+ are installed
+- Check if PMF is preventing deauth attacks (wifite will notify you)
+- For transition mode networks, downgrade attacks have highest success rate
+- SAE handshake capture requires active client connections
+- Use `-vv` to see detailed WPA3 detection and strategy information
+
+**WPA3 cracking performance:**
+- WPA3-SAE is significantly slower to crack than WPA2
+- GPU acceleration is highly recommended (10-100x faster)
+- Ensure hashcat is using your GPU: `hashcat -I` to list devices
+- Consider starting with smaller, targeted wordlists
 
 ### Getting Help
 

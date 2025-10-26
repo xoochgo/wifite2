@@ -83,7 +83,11 @@ class AttackWPA(Attack):
             return False
 
         # Determine if the target is WPA3-SAE
-        target_is_wpa3_sae = self.target.primary_authentication == 'SAE'
+        # For transition mode networks, check if we actually captured a SAE handshake
+        # or a WPA2 handshake. Old .cap files from airodump-ng contain WPA2 handshakes.
+        # Only .pcapng files from hcxdumptool contain SAE handshakes.
+        target_is_wpa3_sae = (self.target.primary_authentication == 'SAE' and 
+                              handshake.capfile.endswith('.pcapng'))
 
         cracker = "Hashcat" # Default to Hashcat
         # TODO: Potentially add a fallback or user choice for aircrack-ng for non-SAE?

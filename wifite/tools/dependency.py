@@ -62,6 +62,23 @@ class Dependency(object):
             Color.pl('{!} {O}At least 1 Required app is missing. Wifite needs Required apps to run{W}')
             import sys
             sys.exit(-1)
+        
+        # Check WPA3 tools (optional, but warn if missing)
+        cls._check_wpa3_tools()
+    
+    @classmethod
+    def _check_wpa3_tools(cls):
+        """Check for WPA3-specific tools and warn if missing."""
+        from ..util.color import Color
+        from ..util.wpa3_tools import WPA3ToolChecker
+        
+        if not WPA3ToolChecker.can_attack_wpa3():
+            missing = WPA3ToolChecker.get_missing_tools()
+            if missing:
+                Color.pl('\n{!} {O}Warning: WPA3 attacks will not be available{W}')
+                Color.pl('{!} {O}Missing WPA3 tools: {R}%s{W}' % ', '.join(missing))
+                Color.pl('{!} {O}Install with: {C}apt install hcxdumptool hcxtools{W}')
+                Color.pl('')
 
     @classmethod
     def fails_dependency_check(cls):

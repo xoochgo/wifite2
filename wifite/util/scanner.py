@@ -284,6 +284,13 @@ class Scanner(object):
         # Ask user for targets if no automatic selection
         return self._prompt_user_for_targets()
 
+    def get_all_targets(self):
+        """
+        Returns all discovered targets without prompting user.
+        Used for scan-only modes like Dragonblood detection.
+        """
+        return self.targets
+
     def _cleanup_memory(self):
         """Periodic memory cleanup to prevent bloat during long scans"""
         # Limit target list size
