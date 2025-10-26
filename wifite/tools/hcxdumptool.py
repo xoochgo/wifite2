@@ -128,8 +128,9 @@ class HcxDumpTool(Dependency):
                 # Force kill if still running
                 if self.proc.poll() is None:
                     os.kill(self.pid, signal.SIGKILL)
-            except Exception:
-                pass
+            except Exception as e:
+                from ..util.logger import log_debug
+                log_debug('HcxDumpTool', f'Kill process error: {e}')
 
     def is_running(self) -> bool:
         """Check if hcxdumptool process is still running."""

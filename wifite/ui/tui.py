@@ -134,8 +134,9 @@ class TUIController:
         try:
             self.live.update(renderable, refresh=True)
             self.last_update = time.time()
-        except Exception:
-            pass
+        except Exception as e:
+            from ..util.logger import log_debug
+            log_debug('TUI', f'Update throttle error: {e}')
 
     def update(self, renderable):
         """
@@ -210,8 +211,9 @@ class TUIController:
                     
                     # Force a refresh to re-render with new dimensions
                     self.live.refresh()
-            except Exception:
-                pass  # Ignore errors during resize handling
+            except Exception as e:
+                from ..util.logger import log_debug
+                log_debug('TUI', f'Resize handling error: {e}')
 
     def check_terminal_size(self) -> bool:
         """
@@ -247,8 +249,9 @@ class TUIController:
             if self.resize_handler is not None:
                 signal.signal(signal.SIGWINCH, self.resize_handler)
                 self.resize_handler = None
-        except Exception:
-            pass
+        except Exception as e:
+            from ..util.logger import log_debug
+            log_debug('TUI', f'Signal cleanup error: {e}')
 
     def _on_resize(self, signum, frame):
         """

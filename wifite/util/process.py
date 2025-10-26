@@ -42,8 +42,9 @@ class ProcessManager:
                     for p in oldest_processes:
                         try:
                             p.force_kill()
-                        except:
-                            pass
+                        except Exception as e:
+                            from .logger import log_debug
+                            log_debug('ProcessManager', f'Failed to kill old process: {e}')
                     self._processes -= set(oldest_processes)
 
             self._processes.add(process)
@@ -63,8 +64,9 @@ class ProcessManager:
                 try:
                     if process.pid and process.pid.poll() is None:
                         process.force_kill()
-                except:
-                    pass  # Ignore errors during emergency cleanup
+                except Exception as e:
+                    from .logger import log_warning
+                    log_warning('ProcessManager', f'Emergency cleanup failed for process: {e}')
             self._processes.clear()
 
 
@@ -261,16 +263,18 @@ class Process(object):
         try:
             if hasattr(self, 'pid') and self.pid and self.pid.poll() is None:
                 self.interrupt()
-        except:
-            pass  # Ignore errors during cleanup
+        except Exception as e:
+            from .logger import log_debug
+            log_debug('Process', f'Cleanup interrupt failed: {e}')
         finally:
             self._cleaned_up = True
             # Use try-except for manager cleanup to handle shutdown scenarios
             try:
                 if hasattr(self, '_manager'):
                     self._manager.unregister_process(self)
-            except:
-                pass  # Ignore errors during shutdown
+            except Exception as e:
+                from .logger import log_debug
+                log_debug('Process', f'Failed to unregister process: {e}')
 
     def interrupt(self, wait_time=2.0):
         """
@@ -288,8 +292,9 @@ class Process(object):
             # Process might be in zombie state, try to clean it up
             try:
                 self.pid.wait()
-            except:
-                pass
+            except Exception as e:
+                from .logger import log_debug
+                log_debug('Process', f'Wait failed during interrupt: {e}')
 
     def _graceful_shutdown(self, wait_time):
         """Attempt graceful shutdown with escalating signals"""
@@ -323,8 +328,9 @@ class Process(object):
             try:
                 os.kill(pid, signal.SIGTERM)
                 time.sleep(1.0)  # Give it a moment
-            except OSError:
-                pass
+            except OSError as e:
+                from .logger import log_debug
+                log_debug('Process', f'SIGTERM failed: {e}')
 
         # Step 3: Force kill with SIGKILL if still running
         if self.pid.poll() is None:
@@ -333,14 +339,16 @@ class Process(object):
             try:
                 os.kill(pid, signal.SIGKILL)
                 self.pid.kill()
-            except OSError:
-                pass
+            except OSError as e:
+                from .logger import log_debug
+                log_debug('Process', f'SIGKILL failed: {e}')
 
         # Final cleanup
         try:
             self.pid.wait()
-        except:
-            pass
+        except Exception as e:
+            from .logger import log_debug
+            log_debug('Process', f'Final wait failed: {e}')
 
     def force_kill(self):
         """Force kill the process immediately"""
@@ -351,8 +359,9 @@ class Process(object):
             if self.pid.poll() is None:
                 self.pid.kill()
                 self.pid.wait()
-        except:
-            pass
+        except Exception as e:
+            from .logger import log_debug
+            log_debug('Process', f'Force kill failed: {e}')
 
     def is_running(self):
         """Check if process is still running"""
@@ -372,8 +381,9 @@ class Process(object):
                         Color.pe(f'\n {{C}}[?]{{W}} Reaped zombie process PID {pid}')
                 except OSError:
                     break
-        except:
-            pass
+        except Exception as e:
+            from .logger import log_debug
+            log_debug('Process', f'Zombie cleanup failed: {e}')
 
     @staticmethod
     def get_open_fd_count():
@@ -383,8 +393,9 @@ class Process(object):
             proc_fd_dir = f'/proc/{os.getpid()}/fd'
             if os.path.exists(proc_fd_dir):
                 return len(os.listdir(proc_fd_dir))
-        except:
-            pass
+        except Exception as e:
+            from .logger import log_debug
+            log_debug('Process', f'Failed to check FD limit: {e}')
         return -1
 
     @staticmethod

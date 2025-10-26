@@ -65,8 +65,10 @@ class TUILogger:
         try:
             with open(cls._log_file, 'a') as f:
                 f.write(log_line)
-        except Exception:
-            pass
+        except Exception as e:
+            # Can't use logger here to avoid recursion
+            import sys
+            print(f"TUI log write error: {e}", file=sys.stderr)
 
     @classmethod
     def debug(cls, message: str):

@@ -48,7 +48,7 @@ class Wifite(object):
 
         from .tools.dependency import Dependency
         Dependency.run_dependency_check()
-        
+
         # Automatic cleanup of old session files on startup
         self.cleanup_old_sessions()
 
@@ -108,40 +108,40 @@ class Wifite(object):
             from .util.session import SessionManager
             session_mgr = SessionManager()
             deleted = session_mgr.cleanup_old_sessions(days=7)
-            
+
             # Only log if verbose mode is enabled and sessions were deleted
             if deleted > 0 and Configuration.verbose > 0:
                 Color.pl('{+} {D}Cleaned up {C}%d{D} old session file(s){W}' % deleted)
         except Exception:
             # Silently ignore cleanup errors on startup
             pass
-    
+
     @staticmethod
     def clean_sessions():
         """Clean up old session files (manual command)."""
         from .util.session import SessionManager
-        
+
         Color.pl('{+} Cleaning up old session files...')
-        
+
         session_mgr = SessionManager()
         deleted = session_mgr.cleanup_old_sessions(days=7)
-        
+
         if deleted > 0:
             Color.pl('{+} Deleted {C}%d{W} old session file(s)' % deleted)
         else:
             Color.pl('{+} No old session files to clean up')
-    
+
     @staticmethod
     def resume_session():
         """Resume a previously interrupted attack session."""
         from .util.session import SessionManager
         from .attack.all import AttackAll
-        
+
         Color.pl('')
         Color.pl('{+} {C}Resuming previous attack session...{W}')
-        
+
         session_mgr = SessionManager()
-        
+
         try:
             # Determine which session to load
             if Configuration.resume_id:
@@ -151,12 +151,12 @@ class Wifite(object):
             else:
                 # List available sessions and let user choose
                 sessions = session_mgr.list_sessions()
-                
+
                 if not sessions:
                     Color.pl('{!} {R}No session files found{W}')
                     Color.pl('{!} {O}Start a new attack session first{W}')
                     return
-                
+
                 if len(sessions) == 1:
                     # Only one session, use it
                     session = session_mgr.load_session(sessions[0]['session_id'])
@@ -168,7 +168,7 @@ class Wifite(object):
                             i, s['session_id'], s['total_targets'], 
                             s['completed'], s['failed'], s['remaining']
                         ))
-                    
+
                     Color.p('{+} Select session to resume [{G}1{W}]: ')
                     try:
                         choice = input().strip()
@@ -182,7 +182,7 @@ class Wifite(object):
                     except (ValueError, KeyboardInterrupt):
                         Color.pl('\n{!} {O}Cancelled{W}')
                         return
-            
+
             # Display session information
             summary = session.get_progress_summary()
             Color.pl('')
@@ -195,16 +195,16 @@ class Wifite(object):
             Color.pl('  {W}Failed: {R}%d{W}' % summary['failed'])
             Color.pl('  {W}Remaining: {O}%d{W}' % summary['remaining'])
             Color.pl('  {W}Progress: {C}%.1f%%{W}' % summary['progress_percent'])
-            
+
             # Display original configuration
             Color.pl('')
             Color.pl('{+} {C}Original Configuration:{W}')
             config = session.config
-            
+
             # Interface
             if config.get('interface'):
                 Color.pl('  {W}Interface: {C}%s{W}' % config['interface'])
-            
+
             # Attack types
             attack_types = []
             if config.get('wps_pixie'):
@@ -215,10 +215,10 @@ class Wifite(object):
                 attack_types.append('PMKID')
             if not config.get('use_pmkid_only') and not config.get('wps_only'):
                 attack_types.append('Handshake')
-            
+
             if attack_types:
                 Color.pl('  {W}Attack Types: {C}%s{W}' % ', '.join(attack_types))
-            
+
             # Wordlist
             if config.get('wordlist'):
                 wordlist = config['wordlist']
@@ -226,19 +226,19 @@ class Wifite(object):
                 if len(wordlist) > 50:
                     wordlist = '...' + wordlist[-47:]
                 Color.pl('  {W}Wordlist: {C}%s{W}' % wordlist)
-            
+
             # Timeout
             if config.get('wpa_attack_timeout'):
                 Color.pl('  {W}WPA Timeout: {C}%d{W} seconds' % config['wpa_attack_timeout'])
-            
+
             # Special modes
             if config.get('infinite_mode'):
                 Color.pl('  {W}Mode: {C}Infinite{W}')
             elif config.get('attack_max') and config['attack_max'] > 0:
                 Color.pl('  {W}Max Targets: {C}%d{W}' % config['attack_max'])
-            
+
             Color.pl('')
-            
+
             if summary['remaining'] == 0:
                 Color.pl('{+} {G}All targets in this session have been attacked{W}')
                 Color.p('{+} Delete this session? [{G}Y{W}/n]: ')
@@ -249,28 +249,28 @@ class Wifite(object):
                 except KeyboardInterrupt:
                     Color.pl('')
                 return
-            
+
             # Restore configuration from session
             Color.pl('{+} {C}Restoring attack configuration...{W}')
             restore_result = session_mgr.restore_configuration(session, Configuration)
-            
+
             # Display warnings about configuration restoration
             if restore_result['warnings']:
                 Color.pl('')
                 Color.pl('{!} {O}Configuration warnings:{W}')
                 for warning in restore_result['warnings']:
                     Color.pl('  {O}•{W} %s' % warning)
-            
+
             # Display conflicts with command-line flags
             if restore_result['conflicts']:
                 Color.pl('')
                 Color.pl('{!} {O}Command-line flags overridden by session:{W}')
                 for conflict in restore_result['conflicts']:
                     Color.pl('  {O}•{W} %s' % conflict)
-            
+
             if restore_result['warnings'] or restore_result['conflicts']:
                 Color.pl('')
-            
+
             # Confirm resumption
             Color.p('{+} Resume this session? [{G}Y{W}/n]: ')
             try:
@@ -280,24 +280,86 @@ class Wifite(object):
             except KeyboardInterrupt:
                 Color.pl('\n{!} {O}Cancelled{W}')
                 return
-            
+
             # Get remaining targets
             remaining_targets = session_mgr.get_remaining_targets(session)
-            
+
             if not remaining_targets:
                 Color.pl('{!} {O}No remaining targets to attack{W}')
                 return
-            
+
             Color.pl('')
             Color.pl('{+} Resuming attack on {C}%d{W} remaining target(s)...' % len(remaining_targets))
-            
-            # TODO: Convert TargetState objects back to Target objects
-            # TODO: Attack remaining targets
-            # TODO: Update session after each target
-            
-            Color.pl('{!} {O}Resume functionality not fully implemented yet{W}')
-            Color.pl('{!} {O}Session loading works, but target attack resumption is pending{W}')
-            
+
+            # Convert TargetState objects back to Target objects
+            from .model.target import Target
+            targets = []
+            failed_conversions = []
+
+            for i, target_state in enumerate(remaining_targets, 1):
+                try:
+                    # Reconstruct Target from TargetState
+                    target = Wifite._target_from_state(target_state)
+                    targets.append(target)
+
+                    if Configuration.verbose > 0:
+                        essid_display = target_state.essid if target_state.essid else '<hidden>'
+                        Color.pl('{+} {D}[%d/%d] Restored target: {C}%s{D} ({C}%s{D}){W}' %
+                                (i, len(remaining_targets), target_state.bssid, essid_display))
+                except Exception as e:
+                    failed_conversions.append((target_state.bssid, str(e)))
+                    Color.pl('{!} {O}Warning: Could not restore target {C}%s{O}: %s{W}' %
+                            (target_state.bssid, str(e)))
+                    continue
+
+            if not targets:
+                Color.pl('{!} {R}Error: Could not restore any targets from session{W}')
+                if failed_conversions:
+                    Color.pl('{!} {R}Failed conversions:{W}')
+                    for bssid, error in failed_conversions:
+                        Color.pl('  {R}•{W} {C}%s{W}: %s' % (bssid, error))
+                return
+
+            Color.pl('{+} Successfully restored {G}%d{W} target(s)' % len(targets))
+            if failed_conversions:
+                Color.pl('{!} {O}Warning: {R}%d{O} target(s) could not be restored{W}' % len(failed_conversions))
+            Color.pl('')
+
+            # Attack the remaining targets
+            try:
+                AttackAll.attack_multiple(targets, session=session, session_mgr=session_mgr)
+
+                # Check if all targets were completed
+                final_summary = session.get_progress_summary()
+                if final_summary['remaining'] == 0:
+                    Color.pl('')
+                    Color.pl('{+} {G}Session completed! All targets attacked.{W}')
+                    Color.pl('{+} {G}Completed: {C}%d{G}, Failed: {R}%d{W}' % 
+                            (final_summary['completed'], final_summary['failed']))
+                    session_mgr.delete_session(session.session_id)
+                    Color.pl('{+} Session file deleted')
+                else:
+                    Color.pl('')
+                    Color.pl('{+} {O}Session paused. Progress saved.{W}')
+                    Color.pl('{+} {G}Completed: {C}%d{G}, Failed: {R}%d{G}, Remaining: {O}%d{W}' % 
+                            (final_summary['completed'], final_summary['failed'], final_summary['remaining']))
+                    Color.pl('{+} Use {C}--resume{W} to continue later.')
+
+            except KeyboardInterrupt:
+                Color.pl('')
+                Color.pl('{!} {O}Attack interrupted by user{W}')
+                final_summary = session.get_progress_summary()
+                Color.pl('{+} {G}Completed: {C}%d{G}, Failed: {R}%d{G}, Remaining: {O}%d{W}' % 
+                        (final_summary['completed'], final_summary['failed'], final_summary['remaining']))
+                Color.pl('{+} Session saved. Use {C}--resume{O} to continue later.{W}')
+            except Exception as e:
+                Color.pl('')
+                Color.pl('{!} {R}Unexpected error during attack:{W} %s' % str(e))
+                if Configuration.verbose > 0:
+                    import traceback
+                    Color.pl('{!} {D}%s{W}' % traceback.format_exc())
+                Color.pl('{+} Session saved. Use {C}--resume{O} to continue later.{W}')
+
         except FileNotFoundError as e:
             Color.pl('{!} {R}Error:{W} %s' % str(e))
             Color.pl('{!} {O}No session files found to resume{W}')
@@ -325,7 +387,7 @@ class Wifite(object):
                         else:
                             Color.pl('{!} {O}Could not determine session to delete{W}')
                             return
-                        
+
                         session_mgr.delete_session(session_id)
                         Color.pl('{+} {G}Corrupted session deleted{W}')
                     except Exception as del_error:
@@ -343,7 +405,81 @@ class Wifite(object):
             if Configuration.verbose > 0:
                 import traceback
                 Color.pl('{!} {D}%s{W}' % traceback.format_exc())
-    
+
+    @staticmethod
+    def _target_from_state(target_state):
+        """
+        Convert a TargetState object back to a Target object.
+
+        Args:
+            target_state: TargetState object from session
+
+        Returns:
+            Target object suitable for attacking
+        """
+        from .model.target import Target
+
+        # Reconstruct the fields array that Target.__init__ expects
+        # INDEX KEY             EXAMPLE
+        # 0 BSSID           (00:1D:D5:9B:11:00)
+        # 1 First time seen (2015-05-27 19:28:43)
+        # 2 Last time seen  (2015-05-27 19:28:46)
+        # 3 channel         (6)
+        # 4 Speed           (54)
+        # 5 Privacy         (WPA2 OWE)
+        # 6 Cipher          (CCMP TKIP)
+        # 7 Authentication  (PSK SAE)
+        # 8 Power           (-62)
+        # 9 beacons         (2)
+        # 10 # IV           (0)
+        # 11 LAN IP         (0.  0.  0.  0)
+        # 12 ID-length      (9)
+        # 13 ESSID          (HOME-ABCD)
+        # 14 Key            ()
+
+        # Convert power back to negative if needed (Target adds 100 to negative values)
+        power = target_state.power
+        if power > 0:
+            power = power - 100
+
+        fields = [
+            target_state.bssid,                          # 0: BSSID
+            '2000-01-01 00:00:00',                       # 1: First time seen (placeholder)
+            '2000-01-01 00:00:00',                       # 2: Last time seen (placeholder)
+            str(target_state.channel),                   # 3: channel
+            '54',                                        # 4: Speed (placeholder)
+            target_state.encryption,                     # 5: Privacy/Encryption
+            'CCMP',                                      # 6: Cipher (placeholder)
+            '',                                          # 7: Authentication (will be derived from encryption)
+            str(power),                                  # 8: Power
+            '10',                                        # 9: beacons (placeholder)
+            '0',                                         # 10: IV (placeholder)
+            '0.  0.  0.  0',                            # 11: LAN IP (placeholder)
+            str(len(target_state.essid)) if target_state.essid else '0',  # 12: ID-length
+            target_state.essid if target_state.essid else '',              # 13: ESSID
+            ''                                           # 14: Key (empty)
+        ]
+
+        # Derive authentication from encryption if not stored separately
+        # This matches the logic in Target.__init__
+        if 'SAE' in target_state.encryption or 'WPA3' in target_state.encryption:
+            fields[7] = 'SAE'
+        elif 'PSK' in target_state.encryption or 'WPA' in target_state.encryption:
+            fields[7] = 'PSK'
+        elif 'OWE' in target_state.encryption:
+            fields[7] = 'OWE'
+        else:
+            fields[7] = 'PSK'  # Default
+
+        target = Target(fields)
+
+        # Restore WPS state if available
+        if target_state.wps:
+            from .model.target import WPSState
+            target.wps = WPSState.UNLOCKED
+
+        return target
+
     @staticmethod
     def print_banner():
         """Displays ASCII art of the highest caliber."""
@@ -371,17 +507,17 @@ class Wifite(object):
         # Scan for targets
         s = Scanner()
         s.find_targets()
-        
+
         # Get all targets (don't ask user to select)
         targets = s.get_all_targets()
-        
+
         if not targets:
             Color.pl('{!} {R}No targets found{W}')
             return
-        
+
         # Scan for Dragonblood vulnerabilities
         results = DragonbloodScanner.scan_targets(targets)
-        
+
         # Display summary
         Color.pl('')
         if results['vulnerable_count'] > 0:
@@ -390,7 +526,7 @@ class Wifite(object):
             Color.pl('{!} {O}Reference: {C}https://wpa3.mathyvanhoef.com/{W}')
         else:
             Color.pl('{+} {G}No Dragonblood vulnerabilities detected{W}')
-        
+
         Color.pl('')
 
     @staticmethod
@@ -410,17 +546,17 @@ class Wifite(object):
         # Scan for targets
         s = Scanner()
         s.find_targets()
-        
+
         # Get all targets (don't ask user to select)
         targets = s.get_all_targets()
-        
+
         if not targets:
             Color.pl('{!} {R}No targets found{W}')
             return
-        
+
         # Scan for OWE vulnerabilities
         results = OWEScanner.scan_targets(targets)
-        
+
         # Display summary
         Color.pl('')
         if results['vulnerable_count'] > 0:
@@ -429,7 +565,7 @@ class Wifite(object):
             Color.pl('{!} {O}Reference: {C}RFC 8110 - Opportunistic Wireless Encryption{W}')
         else:
             Color.pl('{+} {G}No OWE transition mode vulnerabilities detected{W}')
-        
+
         Color.pl('')
 
     @staticmethod
@@ -453,7 +589,7 @@ class Wifite(object):
         session_mgr = SessionManager()
         session = session_mgr.create_session(targets, Configuration)
         session_mgr.save_session(session)
-        
+
         Color.pl('{+} Created session {C}%s{W}' % session.session_id)
 
         # Attack modules handle KeyboardInterrupt properly, no global handler needed
@@ -471,7 +607,7 @@ class Wifite(object):
             attacked_targets = AttackAll.attack_multiple(targets, session, session_mgr)
 
         Color.pl('{+} Finished attacking {C}%d{W} target(s), exiting' % attacked_targets)
-        
+
         # Delete session on successful completion
         # Only delete if all targets were attacked (completed or failed)
         summary = session.get_progress_summary()
@@ -548,14 +684,16 @@ def main():
             cleanup_thread.daemon = True
             cleanup_thread.start()
             cleanup_thread.join(timeout=3)  # 3 second timeout
-        except:
-            pass  # Ignore cleanup errors
+        except Exception as e:
+            from .util.logger import log_debug
+            log_debug('Wifite', f'Cleanup thread error: {e}')
 
         # Delete Reaver .pcap quickly
         try:
             subprocess.run(["rm", "-f", "reaver_output.pcap"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
-        except:
-            pass
+        except Exception as e:
+            from .util.logger import log_debug
+            log_debug('Wifite', f'Reaver cleanup error: {e}')
 
         # Try graceful exit with timeout
         try:
@@ -568,8 +706,9 @@ def main():
             exit_thread.daemon = True
             exit_thread.start()
             exit_thread.join(timeout=2)  # 2 second timeout
-        except:
-            pass
+        except Exception as e:
+            from .util.logger import log_debug
+            log_debug('Wifite', f'Exit thread error: {e}')
 
         # Force exit regardless
         sys.exit(0)

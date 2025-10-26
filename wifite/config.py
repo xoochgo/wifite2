@@ -58,7 +58,6 @@ class Configuration(object):
     use_bully = None
     use_reaver = None
     use_eviltwin = None
-    
     # Session resume flags
     resume = None
     resume_latest = None
@@ -86,7 +85,6 @@ class Configuration(object):
     wps_pixie = None
     wps_pixie_timeout = None
     wps_timeout_threshold = None
-    
     # TUI settings
     use_tui = None  # None = classic (default), True = force TUI, False = classic
     tui_refresh_rate = None
@@ -110,6 +108,10 @@ class Configuration(object):
 
         cls.verbose = 0  # Verbosity of output. Higher number means more debug info about running processes.
         cls.print_stack_traces = True
+
+        # Initialize logger early (will be configured with verbosity later)
+        from .util.logger import Logger
+        Logger.initialize(enabled=True)
 
         cls.kill_conflicting_processes = False
 
@@ -169,7 +171,7 @@ class Configuration(object):
         cls.wpa_handshake_dir = 'hs'  # Dir to store handshakes
         cls.wpa_strip_handshake = False  # Strip non-handshake packets
         cls.ignore_old_handshakes = False  # Always fetch a new handshake
-        
+
         # WPA3-specific variables
         cls.wpa3_only = False  # Only attack WPA3-SAE networks, skip WPA2-only
         cls.wpa3_no_downgrade = False  # Disable transition mode downgrade attacks
@@ -237,7 +239,7 @@ class Configuration(object):
         cls.crack_handshake = False
         cls.update_db = False
         cls.db_filename = 'ieee-oui.txt'
-        
+
         # Session resume
         cls.resume = False
         cls.resume_latest = False
@@ -304,7 +306,7 @@ class Configuration(object):
             cls.crack_handshake = True
         if args.update_db:
             cls.update_db = True
-        
+
         # Session resume
         if args.resume:
             cls.resume = True
@@ -439,6 +441,11 @@ class Configuration(object):
         if args.verbose:
             cls.verbose = args.verbose
             Color.pl('{+} {C}option:{W} verbosity level {G}%d{W}' % args.verbose)
+
+            # Update logger with verbosity level
+            from .util.logger import Logger
+            log_file = os.path.join(os.path.expanduser('~'), '.wifite', 'wifite.log') if args.verbose >= 2 else None
+            Logger.initialize(log_file=log_file, verbose=args.verbose, enabled=True)
 
         if args.kill_conflicting_processes:
             cls.kill_conflicting_processes = True
