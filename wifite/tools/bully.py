@@ -68,15 +68,33 @@ class Bully(Attack, Dependency):
 
 
     def run(self):
+        # Set initial attack type in TUI view
+        if self.attack_view:
+            if self.pixie_dust:
+                self.attack_view.set_attack_type("WPS Pixie-Dust (Bully)")
+                self.attack_view.add_log("Starting WPS Pixie-Dust attack with Bully")
+            else:
+                self.attack_view.set_attack_type("WPS PIN Attack (Bully)")
+                self.attack_view.add_log("Starting WPS PIN brute-force attack with Bully")
+            self.attack_view.add_log(f"Target: {self.target.essid} ({self.target.bssid})")
+            self.attack_view.add_log(f"Channel: {self.target.channel}")
+        
         with Airodump(channel=self.target.channel,
                       target_bssid=self.target.bssid,
                       skip_wps=True,
                       output_file_prefix='wps_pin') as airodump:
             # Wait for target
             self.pattack('Waiting for target to appear...')
+            if self.attack_view:
+                self.attack_view.add_log("Waiting for target to appear...")
+            
             try:
                 self.target = self.wait_for_target(airodump)
+                if self.attack_view:
+                    self.attack_view.add_log("Target found, starting attack...")
             except Exception as e:
+                if self.attack_view:
+                    self.attack_view.add_log(f"Failed: Target timeout - {str(e)}")
                 self.pattack('{R}Failed: {O}Target timeout: %s{W}' % str(e), newline=True)
                 return self.crack_result is not None
 
@@ -120,8 +138,16 @@ class Bully(Attack, Dependency):
             if self.attack_view:
                 self.attack_view.refresh_if_needed()
                 
-                # Determine attack mode
-                mode = "Pixie Dust" if self.pixie_dust else "PIN Brute Force"
+                # Determine attack mode and set attack type
+                if self.pixie_dust:
+                    mode = "Pixie Dust"
+                    attack_type = "WPS Pixie-Dust (Bully)"
+                else:
+                    mode = "PIN Brute Force"
+                    attack_type = "WPS PIN Attack (Bully)"
+                
+                # Set the attack type in the view
+                self.attack_view.set_attack_type(attack_type)
                 
                 # Build metrics
                 metrics = {
@@ -265,6 +291,8 @@ class Bully(Attack, Dependency):
 
             if self.cracked_pin is not None:
                 # Mention the PIN & that we're not done yet.
+                if self.attack_view:
+                    self.attack_view.add_log(f"Cracked WPS PIN: {self.cracked_pin}")
                 self.pattack('{G}Cracked PIN: {C}%s{W}' % self.cracked_pin, newline=True)
 
                 self.state = '{G}Finding Key...{C}'
@@ -275,6 +303,17 @@ class Bully(Attack, Dependency):
             self.cracked_key = key_re[1]
 
         if self.cracked_pin and self.cracked_key:
+            if self.attack_view:
+                self.attack_view.add_log(f"SUCCESS! Cracked WPS Key: {self.cracked_key}")
+                self.attack_view.update_progress({
+                    'progress': 1.0,
+                    'status': 'WPS Cracked!',
+                    'metrics': {
+                        'PIN': self.cracked_pin,
+                        'PSK': self.cracked_key,
+                        'Status': 'SUCCESS'
+                    }
+                })
             self.pattack('{G}Cracked Key: {C}%s{W}' % self.cracked_key, newline=True)
             self.crack_result = CrackResultWPS(
                 bssid=self.target.bssid,

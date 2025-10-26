@@ -134,11 +134,18 @@ class AttackPMKID(Attack):
             # Load existing PMKID hash from filesystem
             if Configuration.verbose > 1:
                 Color.pl('{+} {D}Checking for existing PMKID for BSSID: {C}%s{W}' % self.target.bssid)
+            if self.view:
+                self.view.add_log("Checking for existing PMKID hash...")
+            
             pmkid_file = AttackPMKID.get_existing_pmkid_file(self.target.bssid)
             if pmkid_file is not None:
+                if self.view:
+                    self.view.add_log(f"Found existing PMKID: {os.path.basename(pmkid_file)}")
                 Color.pattack('PMKID', self.target, 'CAPTURE',
                               'Using {C}existing{W} PMKID hash: {C}%s{W}' % os.path.basename(pmkid_file))
             elif Configuration.verbose > 1:
+                if self.view:
+                    self.view.add_log("No existing PMKID found, will capture new one")
                 Color.pl('{+} {D}No existing PMKID found, will capture new one{W}')
 
         if pmkid_file is None:
@@ -146,10 +153,19 @@ class AttackPMKID(Attack):
             pmkid_file = self.capture_pmkid()
 
         if pmkid_file is None:
+            if self.view:
+                self.view.add_log("Failed to capture PMKID")
             return False  # No hash found.
+
+        # Log that we have a PMKID and will proceed to crack
+        if self.view:
+            self.view.add_log(f"PMKID hash ready: {os.path.basename(pmkid_file)}")
+            self.view.add_log("Proceeding to crack phase...")
 
         # Check for the --skip-crack flag
         if Configuration.skip_crack:
+            if self.view:
+                self.view.add_log("Skipping crack phase (--skip-crack flag)")
             return self._extracted_from_run_hashcat_44(
                 '{+} Not cracking pmkid because {C}skip-crack{W} was used{W}'
             )
@@ -163,6 +179,8 @@ class AttackPMKID(Attack):
                 )
         else:
             self.success = False
+            if self.view:
+                self.view.add_log(f"Cannot crack PMKID: {Hashcat.dependency_name} not found")
             Color.pl('\n {O}[{R}!{O}] Note: PMKID attacks are not possible because you do not have {C}%s{O}.{W}'
                      % Hashcat.dependency_name)
 
@@ -178,7 +196,9 @@ class AttackPMKID(Attack):
         # Start TUI view if available
         if self.view:
             self.view.start()
-            self.view.set_attack_type("PMKID Capture")
+            self.view.set_attack_type("PMKID Attack")
+            self.view.add_log(f"Starting PMKID attack on {self.target.essid} ({self.target.bssid})")
+            self.view.add_log(f"Channel: {self.target.channel}")
         
         if self.do_airCRACK:
             self.run_aircrack()
@@ -309,6 +329,11 @@ class AttackPMKID(Attack):
             Color.pl('{!} {O}Delaying PMKID attack due to high resource usage{W}')
             time.sleep(2)  # Brief delay to allow cleanup
 
+        # Update TUI view if available
+        if self.view:
+            self.view.add_log("Starting PMKID capture with hcxdumptool...")
+            self.view.set_capture_tool("hcxdumptool")
+
         # Start hcxdumptool
         t = Thread(target=self.dumptool_thread)
         t.start()
@@ -316,21 +341,37 @@ class AttackPMKID(Attack):
         # Repeatedly run pcaptool & check output for hash for self.target.essid
         pmkid_hash = None
         pcaptool = HcxPcapngTool(self.target)
+        attempts = 0
         while self.timer.remaining() > 0:
+            attempts += 1
             pmkid_hash = pcaptool.get_pmkid_hash(self.pcapng_file)
             if pmkid_hash is not None:
                 break  # Got PMKID
 
+            # Update TUI view
+            if self.view:
+                elapsed = Configuration.pmkid_timeout - self.timer.remaining()
+                self.view.update_pmkid_status(False, attempts)
+                self.view.add_log(f"Waiting for PMKID... ({int(elapsed)}s / {Configuration.pmkid_timeout}s)")
+            
             Color.pattack('PMKID', self.target, 'CAPTURE', 'Waiting for PMKID ({C}%s{W})' % str(self.timer))
             time.sleep(1)
 
         self.keep_capturing = False
 
         if pmkid_hash is None:
+            if self.view:
+                self.view.update_pmkid_status(False, attempts)
+                self.view.add_log("Failed to capture PMKID - timeout reached")
             Color.pattack('PMKID', self.target, 'CAPTURE', '{R}Failed{O} to capture PMKID\n')
             Color.pl('')
             return None  # No hash found.
 
+        # Success!
+        if self.view:
+            self.view.update_pmkid_status(True, attempts)
+            self.view.add_log("Successfully captured PMKID!")
+        
         Color.clear_entire_line()
         Color.pattack('PMKID', self.target, 'CAPTURE', '{G}Captured PMKID{W}')
         return self.save_pmkid(pmkid_hash)
@@ -345,12 +386,19 @@ class AttackPMKID(Attack):
 
         # Check that wordlist exists before cracking.
         if Configuration.wordlist is None:
+            if self.view:
+                self.view.add_log("No wordlist specified - skipping crack")
             Color.pl('\n{!} {O}Not cracking PMKID because there is no {R}wordlist{O} (re-run with {C}--dict{O})')
 
             Color.pl('{!} {O}Run Wifite with the {R}--crack{O} and {R}--dict{O} options to try again.')
 
             key = None
         else:
+            if self.view:
+                self.view.set_attack_type("PMKID Crack")
+                self.view.add_log(f"Starting PMKID crack with wordlist: {Configuration.wordlist}")
+                self.view.add_log("Running hashcat...")
+            
             Color.clear_entire_line()
             Color.pattack('PMKID', self.target, 'CRACK', 'Cracking PMKID using {C}%s{W} ...\n' % Configuration.wordlist)
             key = Hashcat.crack_pmkid(pmkid_file)
@@ -359,6 +407,8 @@ class AttackPMKID(Attack):
             return self._extracted_from_crack_pmkid_file_31(key, pmkid_file)
         # Failed to crack.
         if Configuration.wordlist is not None:
+            if self.view:
+                self.view.add_log("Failed to crack PMKID - passphrase not in wordlist")
             Color.clear_entire_line()
             Color.pattack('PMKID', self.target, '{R}CRACK',
                           '{R}Failed {O}Passphrase not found in dictionary.\n')
@@ -367,6 +417,18 @@ class AttackPMKID(Attack):
     # TODO Rename this here and in `crack_pmkid_file`
     def _extracted_from_crack_pmkid_file_31(self, key, pmkid_file):
         # Successfully cracked.
+        if self.view:
+            self.view.add_log(f"Successfully cracked PMKID!")
+            self.view.add_log(f"Password: {key}")
+            self.view.update_progress({
+                'progress': 1.0,
+                'status': 'PMKID cracked successfully!',
+                'metrics': {
+                    'Password': key,
+                    'Status': 'SUCCESS'
+                }
+            })
+        
         Color.clear_entire_line()
         Color.pattack('PMKID', self.target, 'CRACKED', '{C}Key: {G}%s{W}' % key)
         self.crack_result = CrackResultPMKID(self.target.bssid, self.target.essid,

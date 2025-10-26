@@ -96,6 +96,20 @@ class Reaver(Attack, Dependency):
     def _run(self):
         self.start_time = time.time()
 
+        # Set initial attack type in TUI view
+        if self.attack_view:
+            if self.pixie_dust:
+                self.attack_view.set_attack_type("WPS Pixie-Dust (Reaver)")
+                self.attack_view.add_log("Starting WPS Pixie-Dust attack with Reaver")
+            elif self.null_pin:
+                self.attack_view.set_attack_type("WPS NULL PIN (Reaver)")
+                self.attack_view.add_log("Starting WPS NULL PIN attack with Reaver")
+            else:
+                self.attack_view.set_attack_type("WPS PIN Attack (Reaver)")
+                self.attack_view.add_log("Starting WPS PIN brute-force attack with Reaver")
+            self.attack_view.add_log(f"Target: {self.target.essid} ({self.target.bssid})")
+            self.attack_view.add_log(f"Channel: {self.target.channel}")
+
         with Airodump(channel=self.target.channel,
                       target_bssid=self.target.bssid,
                       skip_wps=True,
@@ -103,9 +117,16 @@ class Reaver(Attack, Dependency):
 
             # Wait for target
             self.pattack('Waiting for target to appear...')
+            if self.attack_view:
+                self.attack_view.add_log("Waiting for target to appear...")
+            
             try:
                 self.target = self.wait_for_target(airodump)
+                if self.attack_view:
+                    self.attack_view.add_log("Target found, starting attack...")
             except Exception as e:
+                if self.attack_view:
+                    self.attack_view.add_log(f"Failed: Target timeout - {str(e)}")
                 self.pattack('{R}Failed: {O}Target timeout: %s{W}' % str(e), newline=True)
                 return self.crack_result is not None
 
@@ -136,8 +157,19 @@ class Reaver(Attack, Dependency):
                 if self.attack_view:
                     self.attack_view.refresh_if_needed()
                     
-                    # Determine attack mode
-                    mode = "Pixie Dust" if self.pixie_dust else "PIN Brute Force"
+                    # Determine attack mode and set attack type
+                    if self.pixie_dust:
+                        mode = "Pixie Dust"
+                        attack_type = "WPS Pixie-Dust (Reaver)"
+                    elif self.null_pin:
+                        mode = "NULL PIN"
+                        attack_type = "WPS NULL PIN (Reaver)"
+                    else:
+                        mode = "PIN Brute Force"
+                        attack_type = "WPS PIN Attack (Reaver)"
+                    
+                    # Set the attack type in the view
+                    self.attack_view.set_attack_type(attack_type)
                     
                     # Build metrics
                     metrics = {
@@ -218,8 +250,31 @@ class Reaver(Attack, Dependency):
 
             if psk is not None:
                 # Reaver provided PSK
+                if self.attack_view:
+                    self.attack_view.add_log(f"SUCCESS! Cracked WPS PIN: {pin}")
+                    self.attack_view.add_log(f"PSK (Password): {psk}")
+                    self.attack_view.update_progress({
+                        'progress': 1.0,
+                        'status': 'WPS Cracked!',
+                        'metrics': {
+                            'PIN': pin,
+                            'PSK': psk,
+                            'Status': 'SUCCESS'
+                        }
+                    })
                 self.pattack('{G}Cracked WPS PIN: {C}%s{W} {G}PSK: {C}%s{W}' % (pin, psk), newline=True)
             else:
+                if self.attack_view:
+                    self.attack_view.add_log(f"SUCCESS! Cracked WPS PIN: {pin}")
+                    self.attack_view.add_log("PSK not provided by Reaver")
+                    self.attack_view.update_progress({
+                        'progress': 1.0,
+                        'status': 'WPS PIN Cracked!',
+                        'metrics': {
+                            'PIN': pin,
+                            'Status': 'SUCCESS'
+                        }
+                    })
                 self.pattack('{G}Cracked WPS PIN: {C}%s' % pin, newline=True)
 
             crack_result = CrackResultWPS(self.target.bssid, ssid, pin, psk)
