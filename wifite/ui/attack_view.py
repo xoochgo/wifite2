@@ -828,3 +828,390 @@ class WPA3AttackView(AttackView):
         """
         self.deauths_sent += count
         self._update_display()
+
+
+class EvilTwinAttackView(AttackView):
+    """Specialized view for Evil Twin attacks."""
+
+    def __init__(self, tui_controller, target, session=None, target_state=None):
+        super().__init__(tui_controller, target, session, target_state)
+        self.attack_type = "Evil Twin Attack"
+        self.attack_phase = "Initializing"
+        self.rogue_ap_status = "Stopped"
+        self.portal_status = "Stopped"
+        self.deauth_status = "Stopped"
+        self.connected_clients = []
+        self.credential_attempts = []
+        self.successful_attempts = 0
+        self.failed_attempts = 0
+        self.deauths_sent = 0
+        self.portal_url = "http://192.168.100.1"
+        self.time_to_first_client = None
+        self.time_to_first_credential = None
+        self.time_to_success = None
+
+    def set_attack_phase(self, phase: str):
+        """
+        Set the current attack phase.
+
+        Args:
+            phase: Phase name (e.g., "Setting up", "Running", "Validating")
+        """
+        self.attack_phase = phase
+        self._update_display()
+
+    def update_rogue_ap_status(self, status: str, channel: int = None, ssid: str = None):
+        """
+        Update rogue AP status.
+
+        Args:
+            status: Status string (e.g., "Running", "Stopped", "Starting")
+            channel: Channel number (optional)
+            ssid: SSID being broadcast (optional)
+        """
+        self.rogue_ap_status = status
+        if channel is not None:
+            self.metrics['AP Channel'] = channel
+        if ssid is not None:
+            self.metrics['AP SSID'] = ssid
+        self._update_display()
+
+    def update_portal_status(self, status: str, url: str = None):
+        """
+        Update captive portal status.
+
+        Args:
+            status: Status string (e.g., "Running", "Stopped")
+            url: Portal URL (optional)
+        """
+        self.portal_status = status
+        if url is not None:
+            self.portal_url = url
+        self._update_display()
+
+    def update_deauth_status(self, status: str, count: int = None, interval: float = None):
+        """
+        Update deauthentication status with adaptive timing information.
+
+        Args:
+            status: Status string (e.g., "Running", "Paused", "Stopped")
+            count: Number of deauth packets sent (optional)
+            interval: Current adaptive interval in seconds (optional)
+        """
+        self.deauth_status = status
+        if count is not None:
+            self.deauths_sent = count
+        if interval is not None:
+            self.metrics['Deauth Interval'] = f'{interval:.1f}s'
+        self._update_display()
+
+    def add_connected_client(self, mac_address: str, ip_address: str = None, hostname: str = None):
+        """
+        Add a connected client.
+
+        Args:
+            mac_address: Client MAC address
+            ip_address: Client IP address (optional)
+            hostname: Client hostname (optional)
+        """
+        client_info = {
+            'mac': mac_address,
+            'ip': ip_address or 'Unknown',
+            'hostname': hostname or 'Unknown',
+            'connect_time': time.time()
+        }
+        
+        # Check if client already exists
+        existing = next((c for c in self.connected_clients if c['mac'] == mac_address), None)
+        if not existing:
+            self.connected_clients.append(client_info)
+            self.add_log(f"[bold green]→[/bold green] Client connected: {mac_address}")
+            
+            # Track time to first client
+            if self.time_to_first_client is None:
+                self.time_to_first_client = time.time() - self.attack_start_time
+                self.add_log(f"[dim]Time to first client: {self.time_to_first_client:.1f}s[/dim]")
+        else:
+            # Update existing client info
+            if ip_address:
+                existing['ip'] = ip_address
+            if hostname:
+                existing['hostname'] = hostname
+        
+        self._update_display()
+
+    def remove_connected_client(self, mac_address: str):
+        """
+        Remove a disconnected client.
+
+        Args:
+            mac_address: Client MAC address
+        """
+        self.connected_clients = [c for c in self.connected_clients if c['mac'] != mac_address]
+        self.add_log(f"[bold yellow]←[/bold yellow] Client disconnected: {mac_address}")
+        self._update_display()
+
+    def add_credential_attempt(self, mac_address: str, password: str, success: bool):
+        """
+        Add a credential submission attempt.
+
+        Args:
+            mac_address: Client MAC address
+            password: Submitted password
+            success: Whether validation was successful
+        """
+        attempt_info = {
+            'mac': mac_address,
+            'password': password,
+            'success': success,
+            'timestamp': time.time()
+        }
+        
+        self.credential_attempts.append(attempt_info)
+        
+        # Track time to first credential
+        if self.time_to_first_credential is None:
+            self.time_to_first_credential = time.time() - self.attack_start_time
+            self.add_log(f"[dim]Time to first credential: {self.time_to_first_credential:.1f}s[/dim]")
+        
+        if success:
+            self.successful_attempts += 1
+            # Use rich text formatting for success
+            self.add_log(f"[bold green]✓[/bold green] Valid credentials from {mac_address}: [bold]{password}[/bold]", timestamp=True)
+            # Update phase to show success
+            self.set_attack_phase("Validating")
+            
+            # Track time to success
+            if self.time_to_success is None:
+                self.time_to_success = time.time() - self.attack_start_time
+                self.add_log(f"[bold green]Time to success: {self.time_to_success:.1f}s[/bold green]")
+        else:
+            self.failed_attempts += 1
+            self.add_log(f"[bold red]✗[/bold red] Invalid credentials from {mac_address}", timestamp=True)
+        
+        self._update_display()
+
+    def increment_deauths(self, count: int = 1):
+        """
+        Increment deauth counter.
+
+        Args:
+            count: Number of deauths to add
+        """
+        self.deauths_sent += count
+        self._update_display()
+
+    def _update_display(self):
+        """Update the display with current Evil Twin attack status."""
+        # Determine status message and progress based on phase
+        phase_config = {
+            "Initializing": ("⋯ Initializing Evil Twin attack...", 0.05),
+            "Checking dependencies": ("⋯ Checking required dependencies...", 0.10),
+            "Setting up": ("⋯ Setting up rogue AP and services...", 0.20),
+            "Starting rogue AP": ("⋯ Starting rogue access point...", 0.30),
+            "Starting network services": ("⋯ Starting DHCP and DNS services...", 0.40),
+            "Starting captive portal": ("⋯ Starting captive portal...", 0.50),
+            "Starting deauthentication": ("⋯ Starting deauthentication...", 0.60),
+            "Stopping": ("⋯ Stopping attack...", 0.90),
+            "Cleaning up": ("⋯ Cleaning up resources...", 0.95),
+            "Completed": ("✓ Attack completed successfully!", 1.0),
+            "Failed": ("✗ Attack failed", 0.0),
+        }
+        
+        if self.attack_phase == "Running":
+            if self.successful_attempts > 0:
+                status = "✓ Credentials captured! Validating..."
+                progress = 0.95
+            elif len(self.connected_clients) > 0:
+                status = f"⏳ Waiting for credentials from {len(self.connected_clients)} client(s)..."
+                progress = 0.75
+            else:
+                status = "⏳ Waiting for clients to connect..."
+                progress = 0.65
+        elif self.attack_phase == "Validating":
+            status = "⋯ Validating captured credentials..."
+            progress = 0.98
+        else:
+            status, progress = phase_config.get(self.attack_phase, (self.attack_phase, 0.5))
+
+        # Build metrics dictionary with visual indicators
+        metrics = {
+            'Phase': self._format_phase_indicator(self.attack_phase),
+            'Rogue AP': self._format_status(self.rogue_ap_status),
+            'Portal': self._format_status(self.portal_status),
+            'Deauth': self._format_status(self.deauth_status),
+        }
+        
+        # Add client and attempt counts with visual emphasis
+        if len(self.connected_clients) > 0:
+            metrics['Connected Clients'] = f'[bold green]{len(self.connected_clients)}[/bold green]'
+        else:
+            metrics['Connected Clients'] = f'[dim]{len(self.connected_clients)}[/dim]'
+        
+        if len(self.credential_attempts) > 0:
+            metrics['Credential Attempts'] = f'[bold yellow]{len(self.credential_attempts)}[/bold yellow]'
+        else:
+            metrics['Credential Attempts'] = f'[dim]{len(self.credential_attempts)}[/dim]'
+
+        # Add success/failure counts if there are attempts
+        if len(self.credential_attempts) > 0:
+            success_rate = self._get_success_rate()
+            if self.successful_attempts > 0:
+                metrics['Successful'] = f'[bold green]{self.successful_attempts}[/bold green] ({success_rate:.0f}%)'
+            else:
+                metrics['Successful'] = f'[dim]{self.successful_attempts}[/dim]'
+            
+            if self.failed_attempts > 0:
+                metrics['Failed'] = f'[bold red]{self.failed_attempts}[/bold red]'
+            else:
+                metrics['Failed'] = f'[dim]{self.failed_attempts}[/dim]'
+
+        # Add deauth metrics if deauth is active
+        if self.deauth_status in ["Running", "Paused"]:
+            if self.deauths_sent > 0:
+                # Calculate deauths per minute
+                elapsed = time.time() - self.attack_start_time
+                deauths_per_min = (self.deauths_sent / elapsed * 60) if elapsed > 0 else 0
+                metrics['Deauths Sent'] = f'[cyan]{self.deauths_sent:,}[/cyan] ([dim]{deauths_per_min:.1f}/min[/dim])'
+            else:
+                metrics['Deauths Sent'] = f'[dim]0[/dim]'
+            
+            # Show adaptive interval if available
+            if 'Deauth Interval' in self.metrics:
+                interval_str = self.metrics['Deauth Interval']
+                metrics['Deauth Interval'] = f'[yellow]{interval_str}[/yellow] [dim](adaptive)[/dim]'
+
+        # Add portal URL
+        if self.portal_status == "Running":
+            metrics['Portal URL'] = f'[link={self.portal_url}]{self.portal_url}[/link]'
+        
+        # Add timing metrics if available
+        if self.time_to_first_client is not None:
+            metrics['Time to 1st Client'] = f'[cyan]{self.time_to_first_client:.1f}s[/cyan]'
+        
+        if self.time_to_first_credential is not None:
+            metrics['Time to 1st Cred'] = f'[yellow]{self.time_to_first_credential:.1f}s[/yellow]'
+        
+        if self.time_to_success is not None:
+            metrics['Time to Success'] = f'[bold green]{self.time_to_success:.1f}s[/bold green]'
+
+        self.update_progress({
+            'progress': progress,
+            'status': status,
+            'metrics': metrics
+        })
+    
+    def _format_phase_indicator(self, phase: str) -> str:
+        """
+        Format phase with visual indicator.
+        
+        Args:
+            phase: Phase name
+            
+        Returns:
+            Formatted phase string with indicator
+        """
+        phase_indicators = {
+            "Initializing": "⋯",
+            "Checking dependencies": "⋯",
+            "Setting up": "⋯",
+            "Starting rogue AP": "⋯",
+            "Starting network services": "⋯",
+            "Starting captive portal": "⋯",
+            "Starting deauthentication": "⋯",
+            "Running": "▶",
+            "Validating": "⋯",
+            "Stopping": "⏸",
+            "Cleaning up": "⋯",
+            "Completed": "✓",
+            "Failed": "✗",
+        }
+        
+        indicator = phase_indicators.get(phase, "•")
+        
+        # Color code based on phase
+        if phase == "Completed":
+            return f"[bold green]{indicator}[/bold green] {phase}"
+        elif phase == "Failed":
+            return f"[bold red]{indicator}[/bold red] {phase}"
+        elif phase == "Running":
+            return f"[bold cyan]{indicator}[/bold cyan] {phase}"
+        elif phase in ["Stopping", "Cleaning up"]:
+            return f"[yellow]{indicator}[/yellow] {phase}"
+        else:
+            return f"[dim]{indicator}[/dim] {phase}"
+
+    def _format_status(self, status: str) -> str:
+        """
+        Format status with color indicators.
+
+        Args:
+            status: Status string
+
+        Returns:
+            Formatted status string with indicator
+        """
+        if status == "Running":
+            return "✓ Running"
+        elif status == "Stopped":
+            return "✗ Stopped"
+        elif status == "Paused":
+            return "⏸ Paused"
+        elif status in ["Starting", "Stopping"]:
+            return f"⋯ {status}"
+        else:
+            return status
+
+    def _get_success_rate(self) -> float:
+        """
+        Calculate success rate of credential attempts.
+
+        Returns:
+            Success rate as percentage (0-100)
+        """
+        total = len(self.credential_attempts)
+        if total == 0:
+            return 0.0
+        return (self.successful_attempts / total) * 100
+
+    def _render_progress(self) -> Panel:
+        """
+        Override progress rendering to include client list.
+
+        Returns:
+            Rich Panel with progress and client information
+        """
+        # Get base progress panel
+        base_panel = super()._render_progress()
+        
+        # If we have connected clients, add a client table
+        if len(self.connected_clients) > 0:
+            from rich.console import Group
+            
+            # Create client table
+            client_table = Table(show_header=True, box=None, padding=(0, 1))
+            client_table.add_column("MAC Address", style="cyan", width=17)
+            client_table.add_column("IP Address", style="green", width=15)
+            client_table.add_column("Hostname", style="yellow")
+            client_table.add_column("Duration", style="white", width=8)
+            
+            current_time = time.time()
+            for client in self.connected_clients[-5:]:  # Show last 5 clients
+                duration = int(current_time - client['connect_time'])
+                duration_str = f"{duration // 60}m{duration % 60}s" if duration >= 60 else f"{duration}s"
+                
+                client_table.add_row(
+                    client['mac'],
+                    client['ip'],
+                    client['hostname'][:20] if len(client['hostname']) > 20 else client['hostname'],
+                    duration_str
+                )
+            
+            # Combine base panel content with client table
+            return Panel(
+                Group(base_panel.renderable, Text(), Text("Connected Clients:", style="bold"), client_table),
+                title="[bold]Progress[/bold]",
+                border_style="blue"
+            )
+        
+        return base_panel

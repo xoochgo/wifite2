@@ -20,6 +20,123 @@ class Arguments(object):
     def _verbose(self, msg):
         return Color.s(msg) if self.verbose else argparse.SUPPRESS
 
+    def _get_eviltwin_examples(self):
+        """Returns Evil Twin attack examples and legal warnings for verbose help."""
+        return Color.s('''
+{C}═══════════════════════════════════════════════════════════════════════════════{W}
+{C}                          EVIL TWIN ATTACK OVERVIEW                             {W}
+{C}═══════════════════════════════════════════════════════════════════════════════{W}
+
+{G}What is an Evil Twin Attack?{W}
+
+An Evil Twin attack creates a rogue wireless access point that mimics a legitimate
+network. When clients connect to the rogue AP, they are presented with a captive
+portal that requests the network password. The attack validates submitted credentials
+against the real AP and captures valid passwords.
+
+{G}How it Works:{W}
+
+  1. {C}Rogue AP Creation{W}: Creates a fake AP with the same SSID as the target
+  2. {C}Deauthentication{W}: Forces clients to disconnect from the legitimate AP
+  3. {C}Client Connection{W}: Clients automatically reconnect to the rogue AP
+  4. {C}Captive Portal{W}: Displays a login page requesting the WiFi password
+  5. {C}Credential Validation{W}: Tests submitted passwords against the real AP
+  6. {C}Success{W}: Captures and saves valid credentials
+
+{C}═══════════════════════════════════════════════════════════════════════════════{W}
+{C}                          EVIL TWIN USAGE EXAMPLES                              {W}
+{C}═══════════════════════════════════════════════════════════════════════════════{W}
+
+  {O}Basic Evil Twin attack on all targets{W}
+  {C}wifite --eviltwin{W}
+
+  {O}Attack specific target by BSSID{W}
+  {C}wifite --eviltwin -b AA:BB:CC:DD:EE:FF{W}
+
+  {O}Attack specific target by ESSID{W}
+  {C}wifite --eviltwin -e "NetworkName"{W}
+
+  {O}Use custom captive portal template{W}
+  {C}wifite --eviltwin --eviltwin-template tplink{W}
+
+  {O}Specify interfaces for AP and deauth{W}
+  {C}wifite --eviltwin --eviltwin-fakeap-iface wlan1 --eviltwin-deauth-iface wlan0mon{W}
+
+  {O}Adjust deauthentication interval{W}
+  {C}wifite --eviltwin --eviltwin-deauth-interval 10{W}
+
+  {O}Use custom portal port{W}
+  {C}wifite --eviltwin --eviltwin-port 8080{W}
+
+  {O}Skip credential validation (testing only){W}
+  {C}wifite --eviltwin --eviltwin-no-validate{W}
+
+{C}═══════════════════════════════════════════════════════════════════════════════{W}
+{C}                          REQUIREMENTS AND DEPENDENCIES                         {W}
+{C}═══════════════════════════════════════════════════════════════════════════════{W}
+
+  {G}Required Tools:{W}
+    {C}hostapd{W} (v2.9+) - Creates software access point
+    {C}dnsmasq{W} (v2.80+) - DHCP and DNS server
+    {C}wpa_supplicant{W} (v2.9+) - Validates credentials
+    {C}iptables{W} - Traffic redirection (usually pre-installed)
+
+  {G}Hardware Requirements:{W}
+    • Two wireless interfaces (one for AP, one for deauth)
+    • OR one interface that supports AP mode and monitor mode simultaneously
+    • Interface must support AP mode (check with: {C}iw list{W})
+
+  {G}Recommended Adapters:{W}
+    • Alfa AWUS036ACH (supports AP mode)
+    • TP-Link TL-WN722N v1 (supports AP mode)
+    • Panda PAU09 (supports AP mode)
+
+{C}═══════════════════════════════════════════════════════════════════════════════{W}
+{C}                          CAPTIVE PORTAL TEMPLATES                              {W}
+{C}═══════════════════════════════════════════════════════════════════════════════{W}
+
+  {G}Available Templates:{W}
+    {C}generic{W}  - Generic router login page (default)
+    {C}tplink{W}   - TP-Link router style
+    {C}netgear{W}  - Netgear router style
+    {C}linksys{W}  - Linksys router style
+
+  {G}Template Selection:{W}
+    The tool can auto-detect the router manufacturer from the BSSID and select
+    an appropriate template. You can override this with --eviltwin-template.
+
+{C}═══════════════════════════════════════════════════════════════════════════════{W}
+{C}                          TROUBLESHOOTING                                       {W}
+{C}═══════════════════════════════════════════════════════════════════════════════{W}
+
+  {R}Problem:{W} Interface doesn't support AP mode
+  {G}Solution:{W} Check capabilities with {C}iw list | grep -A 10 "Supported interface modes"{W}
+             Use a different adapter that supports AP mode
+
+  {R}Problem:{W} Port 80 already in use
+  {G}Solution:{W} Stop conflicting service: {C}systemctl stop apache2{W}
+             Or use alternate port: {C}--eviltwin-port 8080{W}
+
+  {R}Problem:{W} Hostapd fails to start
+  {G}Solution:{W} Kill conflicting processes: {C}killall NetworkManager wpa_supplicant{W}
+             Check interface is not in use: {C}airmon-ng check kill{W}
+
+  {R}Problem:{W} No clients connecting
+  {G}Solution:{W} Verify deauth is working (check logs)
+             Move closer to target AP
+             Ensure rogue AP is on same channel as target
+
+  {R}Problem:{W} Credential validation fails
+  {G}Solution:{W} Ensure legitimate AP is still reachable
+             Check wpa_supplicant is installed and working
+             Review validation logs for errors
+
+{C}═══════════════════════════════════════════════════════════════════════════════{W}
+
+  For more information: {C}https://github.com/kimocoder/wifite2{W}
+
+''')
+
     def _get_wpa3_examples(self):
         """Returns WPA3 attack examples and strategy explanations for verbose help."""
         return Color.s('''
@@ -97,8 +214,6 @@ class Arguments(object):
     {G}hashcat{W} (v6.0.0+) - WPA3 cracking (mode 22000)
     {G}tshark{W} (optional) - SAE frame analysis
 
-  Install: {C}apt install hcxdumptool hcxtools hashcat{W}
-
 {C}═══════════════════════════════════════════════════════════════════════════════{W}
 
   For more information: {C}https://github.com/kimocoder/wifite2{W}
@@ -108,10 +223,15 @@ class Arguments(object):
     def get_arguments(self):
         """ Returns parser.args() containing all program arguments """
 
+        # Build epilog with both Evil Twin and WPA3 examples if verbose
+        epilog = None
+        if self.verbose:
+            epilog = self._get_eviltwin_examples() + '\n' + self._get_wpa3_examples()
+
         parser = argparse.ArgumentParser(usage=argparse.SUPPRESS,
                                          formatter_class=lambda prog:
                                          argparse.RawDescriptionHelpFormatter(prog, max_help_position=80, width=130),
-                                         epilog=self._get_wpa3_examples() if self.verbose else None)
+                                         epilog=epilog)
 
         self._add_global_args(parser.add_argument_group(Color.s('{C}SETTINGS{W}')))
         self._add_wep_args(parser.add_argument_group(Color.s('{C}WEP{W}')))
@@ -293,14 +413,60 @@ class Arguments(object):
                           help=Color.s('Use classic text mode, disable TUI (default: {G}auto-detect{W})'))
 
     def _add_eviltwin_args(self, group):
-        """
         group.add_argument('--eviltwin',
-            action='store_true',
-            dest='use_eviltwin',
-            help=Color.s('Use the "Evil Twin" attack against all targets ' +
-                '(default: {G}off{W})'))
-        # TODO: Args to specify deauth interface, server port, etc.
-        """
+                          action='store_true',
+                          dest='use_eviltwin',
+                          help=Color.s('Use the {C}Evil Twin{W} attack against all targets. '
+                                      '{R}WARNING:{W} May be illegal without authorization. '
+                                      'Creates rogue AP to capture credentials. (default: {G}off{W})'))
+
+        group.add_argument('--eviltwin-deauth-iface',
+                          action='store',
+                          dest='eviltwin_deauth_iface',
+                          metavar='[interface]',
+                          type=str,
+                          help=self._verbose('Interface for deauthentication (default: {G}same as scan interface{W})'))
+
+        group.add_argument('--eviltwin-fakeap-iface',
+                          action='store',
+                          dest='eviltwin_fakeap_iface',
+                          metavar='[interface]',
+                          type=str,
+                          help=self._verbose('Interface for fake AP (default: {G}auto-detect{W})'))
+
+        group.add_argument('--eviltwin-port',
+                          action='store',
+                          dest='eviltwin_port',
+                          metavar='[port]',
+                          type=int,
+                          help=self._verbose('Port for captive portal (default: {G}80{W})'))
+
+        group.add_argument('--eviltwin-deauth-interval',
+                          action='store',
+                          dest='eviltwin_deauth_interval',
+                          metavar='[seconds]',
+                          type=int,
+                          help=self._verbose('Seconds between deauth bursts (default: {G}5{W})'))
+
+        group.add_argument('--eviltwin-template',
+                          action='store',
+                          dest='eviltwin_template',
+                          metavar='[template]',
+                          type=str,
+                          choices=['generic', 'tplink', 'netgear', 'linksys'],
+                          help=self._verbose('Captive portal template: {C}generic{W}, {C}tplink{W}, {C}netgear{W}, {C}linksys{W} (default: {G}generic{W})'))
+
+        group.add_argument('--eviltwin-channel',
+                          action='store',
+                          dest='eviltwin_channel',
+                          metavar='[channel]',
+                          type=int,
+                          help=self._verbose('Override channel for rogue AP (default: {G}same as target{W})'))
+
+        group.add_argument('--eviltwin-no-validate',
+                          action='store_true',
+                          dest='eviltwin_no_validate',
+                          help=self._verbose('Skip credential validation (testing only) (default: {G}off{W})'))
 
     def _add_wep_args(self, wep):
         # WEP
@@ -659,12 +825,12 @@ class Arguments(object):
                               action='store_true',
                               dest='crack_handshake',
                               help=Color.s('Show commands to crack a captured handshake'))
-        
+
         commands.add_argument('--update-db',
                               action='store_true',
                               dest='update_db',
                               help=Color.s('Update the local MAC address prefix database from IEEE registries'))
-        
+
         commands.add_argument('--resume',
                               action='store_true',
                               dest='resume',
@@ -672,20 +838,20 @@ class Arguments(object):
                                          'If multiple sessions exist, displays a list to choose from. '
                                          'Sessions are automatically saved during attacks and can be resumed '
                                          'after interruption (Ctrl+C, crash, power loss).'))
-        
+
         commands.add_argument('--resume-latest',
                               action='store_true',
                               dest='resume_latest',
                               help=Color.s('Automatically resume the most recent session without prompting. '
                                          'Useful for quickly continuing the last interrupted attack.'))
-        
+
         commands.add_argument('--resume-id',
                               action='store',
                               metavar='session_id',
                               dest='resume_id',
                               help=Color.s('Resume a specific session by ID (e.g., session_20250126_120000). '
                                          'Use --resume to see available session IDs.'))
-        
+
         commands.add_argument('--clean-sessions',
                               action='store_true',
                               dest='clean_sessions',

@@ -176,7 +176,17 @@ class CrackResult(object):
                                       essid=json['essid'],
                                       pmkid_file=json['pmkid_file'],
                                       key=json['key'])
-            
+
+        elif json['type'] == 'Evil Twin':
+            from .eviltwin_result import CrackResultEvilTwin
+            result = CrackResultEvilTwin(bssid=json['bssid'],
+                                         essid=json['essid'],
+                                         key=json['key'],
+                                         clients_connected=json.get('clients_connected', 0),
+                                         credential_attempts=json.get('credential_attempts', 0),
+                                         validation_time=json.get('validation_time', 0.0),
+                                         portal_template=json.get('portal_template', 'generic'))
+
         else:
             from .ignored_result import CrackResultIgnored
             result = CrackResultIgnored(bssid=json['bssid'],

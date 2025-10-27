@@ -7,7 +7,7 @@ from .result import CrackResult
 
 class CrackResultSAE(CrackResult):
     """Result from cracking a WPA3-SAE handshake."""
-    
+
     def __init__(self, bssid, essid, handshake_file, key):
         self.result_type = 'WPA3-SAE'
         self.bssid = bssid

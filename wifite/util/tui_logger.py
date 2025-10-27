@@ -31,12 +31,12 @@ class TUILogger:
         """
         cls._enabled = enabled
         cls._debug_mode = debug_mode
-        
+
         if enabled:
             if log_file is None:
                 log_file = '/tmp/wifite_tui.log'
             cls._log_file = log_file
-            
+
             # Create/clear log file
             try:
                 with open(cls._log_file, 'w') as f:

@@ -62,16 +62,19 @@ class Dependency(object):
             Color.pl('{!} {O}At least 1 Required app is missing. Wifite needs Required apps to run{W}')
             import sys
             sys.exit(-1)
-        
+
         # Check WPA3 tools (optional, but warn if missing)
         cls._check_wpa3_tools()
-    
+
+        # Check Evil Twin tools (optional, but warn if missing)
+        cls._check_eviltwin_tools()
+
     @classmethod
     def _check_wpa3_tools(cls):
         """Check for WPA3-specific tools and warn if missing."""
         from ..util.color import Color
         from ..util.wpa3_tools import WPA3ToolChecker
-        
+
         if not WPA3ToolChecker.can_attack_wpa3():
             missing = WPA3ToolChecker.get_missing_tools()
             if missing:
@@ -79,6 +82,46 @@ class Dependency(object):
                 Color.pl('{!} {O}Missing WPA3 tools: {R}%s{W}' % ', '.join(missing))
                 Color.pl('{!} {O}Install with: {C}apt install hcxdumptool hcxtools{W}')
                 Color.pl('')
+
+    @classmethod
+    def _check_eviltwin_tools(cls):
+        """Check for Evil Twin-specific tools and warn if missing."""
+        from ..util.color import Color
+        from ..config import Configuration
+
+        # Only check if Evil Twin is enabled
+        if not Configuration.use_eviltwin:
+            return
+
+        missing_tools = []
+        install_commands = []
+
+        # Check for hostapd
+        from ..util.process import Process
+        if not Process.exists('hostapd'):
+            missing_tools.append('hostapd')
+            install_commands.append('apt install hostapd')
+
+        # Check for dnsmasq
+        if not Process.exists('dnsmasq'):
+            missing_tools.append('dnsmasq')
+            install_commands.append('apt install dnsmasq')
+
+        # Check for wpa_supplicant (for credential validation)
+        if not Process.exists('wpa_supplicant'):
+            missing_tools.append('wpa_supplicant')
+            install_commands.append('apt install wpasupplicant')
+
+        if missing_tools:
+            Color.pl('\n{!} {R}Error: Evil Twin attack requires additional tools{W}')
+            Color.pl('{!} {O}Missing tools: {R}%s{W}' % ', '.join(missing_tools))
+            Color.pl('{!} {O}Install with:{W}')
+            for cmd in install_commands:
+                Color.pl('{!}   {C}%s{W}' % cmd)
+            Color.pl('')
+
+            import sys
+            sys.exit(-1)
 
     @classmethod
     def fails_dependency_check(cls):

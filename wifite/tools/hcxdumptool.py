@@ -19,7 +19,7 @@ import signal
 
 class HcxDumpTool(Dependency):
     """Wrapper around hcxdumptool program for SAE handshake capture."""
-    
+
     dependency_required = False  # Optional for WPA3 attacks
     dependency_name = 'hcxdumptool'
     dependency_url = 'https://github.com/ZerBea/hcxdumptool'
@@ -28,7 +28,7 @@ class HcxDumpTool(Dependency):
                  output_file=None, enable_deauth=True, pmf_required=False):
         """
         Initialize hcxdumptool wrapper.
-        
+
         Args:
             interface: Wireless interface in monitor mode
             channel: Channel to monitor (optional)
@@ -63,7 +63,7 @@ class HcxDumpTool(Dependency):
         """
         Start hcxdumptool capture process.
         Called at start of 'with HcxDumpTool(...) as x:'
-        
+
         Optimizations:
         - Uses efficient BPF filters to reduce CPU usage
         - Filters for authentication frames only (SAE uses auth frames)
@@ -95,7 +95,7 @@ class HcxDumpTool(Dependency):
         else:
             # Passive mode only (for PMF-required networks)
             command.append('--passive_beacon')
-        
+
         # Optimize capture by filtering for relevant frame types only
         # This reduces CPU usage and memory consumption
         # SAE uses authentication frames (type 0x0b), so we focus on those
@@ -124,7 +124,7 @@ class HcxDumpTool(Dependency):
             try:
                 self.proc.interrupt()
                 time.sleep(0.5)
-                
+
                 # Force kill if still running
                 if self.proc.poll() is None:
                     os.kill(self.pid, signal.SIGKILL)
@@ -153,7 +153,7 @@ class HcxDumpTool(Dependency):
     def check_version() -> str:
         """
         Get hcxdumptool version.
-        
+
         Returns:
             Version string or None if not installed
         """
@@ -163,14 +163,14 @@ class HcxDumpTool(Dependency):
         try:
             proc = Process(['hcxdumptool', '--version'], devnull=False)
             output = proc.stdout()
-            
+
             # Parse version from output
             # Expected format: "hcxdumptool 6.x.x"
             import re
             match = re.search(r'(\d+\.\d+\.\d+)', output)
             if match:
                 return match.group(1)
-            
+
             return None
         except Exception:
             return None
@@ -179,10 +179,10 @@ class HcxDumpTool(Dependency):
     def check_minimum_version(min_version='6.0.0') -> bool:
         """
         Check if installed version meets minimum requirement.
-        
+
         Args:
             min_version: Minimum required version (default: 6.0.0)
-        
+
         Returns:
             True if version is sufficient, False otherwise
         """
@@ -193,7 +193,7 @@ class HcxDumpTool(Dependency):
         try:
             current_parts = [int(x) for x in current.split('.')]
             min_parts = [int(x) for x in min_version.split('.')]
-            
+
             return current_parts >= min_parts
         except Exception:
             return False
@@ -201,7 +201,7 @@ class HcxDumpTool(Dependency):
 
 class HcxPcapngTool(Dependency):
     """Wrapper around hcxpcapngtool for converting captures to hashcat format."""
-    
+
     dependency_required = False  # Optional for WPA3 attacks
     dependency_name = 'hcxpcapngtool'
     dependency_url = 'https://github.com/ZerBea/hcxtools'
@@ -216,13 +216,13 @@ class HcxPcapngTool(Dependency):
                           bssid: str = None, essid: str = None) -> bool:
         """
         Convert pcapng capture to hashcat format (mode 22000).
-        
+
         Args:
             input_file: Input pcapng file
             output_file: Output hash file
             bssid: Filter by BSSID (optional)
             essid: Filter by ESSID (optional)
-        
+
         Returns:
             True if conversion successful, False otherwise
         """
@@ -244,7 +244,7 @@ class HcxPcapngTool(Dependency):
         try:
             proc = Process(command, devnull=False)
             proc.wait()
-            
+
             # Check if output file was created
             return os.path.exists(output_file) and os.path.getsize(output_file) > 0
         except Exception:
@@ -254,7 +254,7 @@ class HcxPcapngTool(Dependency):
     def check_version() -> str:
         """
         Get hcxpcapngtool version.
-        
+
         Returns:
             Version string or None if not installed
         """
@@ -264,13 +264,13 @@ class HcxPcapngTool(Dependency):
         try:
             proc = Process(['hcxpcapngtool', '--version'], devnull=False)
             output = proc.stdout()
-            
+
             # Parse version from output
             import re
             match = re.search(r'(\d+\.\d+\.\d+)', output)
             if match:
                 return match.group(1)
-            
+
             return None
         except Exception:
             return None

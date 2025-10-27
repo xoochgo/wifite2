@@ -15,6 +15,120 @@ from datetime import datetime
 
 
 @dataclass
+class EvilTwinClientState:
+    """Represents a client connection in an Evil Twin attack session."""
+    
+    mac_address: str
+    ip_address: Optional[str] = None
+    hostname: Optional[str] = None
+    connect_time: float = 0.0
+    disconnect_time: Optional[float] = None
+    credential_submitted: bool = False
+    credential_valid: Optional[bool] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return asdict(self)
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'EvilTwinClientState':
+        """Create EvilTwinClientState from dictionary."""
+        return cls(**data)
+
+
+@dataclass
+class EvilTwinCredentialAttempt:
+    """Represents a credential submission attempt in an Evil Twin attack."""
+    
+    mac_address: str
+    password: str
+    success: bool
+    timestamp: float
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return asdict(self)
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'EvilTwinCredentialAttempt':
+        """Create EvilTwinCredentialAttempt from dictionary."""
+        return cls(**data)
+
+
+@dataclass
+class EvilTwinAttackState:
+    """Represents the complete state of an Evil Twin attack for session persistence."""
+    
+    # Attack configuration
+    interface_ap: Optional[str] = None
+    interface_deauth: Optional[str] = None
+    portal_template: str = 'generic'
+    deauth_interval: int = 5
+    
+    # Attack progress
+    attack_phase: str = "initializing"  # initializing, running, validating, completed, failed
+    start_time: Optional[float] = None
+    setup_time: Optional[float] = None
+    
+    # Client tracking
+    clients: List[EvilTwinClientState] = field(default_factory=list)
+    
+    # Credential attempts
+    credential_attempts: List[EvilTwinCredentialAttempt] = field(default_factory=list)
+    
+    # Statistics
+    total_clients_connected: int = 0
+    total_credential_attempts: int = 0
+    successful_validations: int = 0
+    
+    # Result (if successful)
+    captured_password: Optional[str] = None
+    validation_time: float = 0.0
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            'interface_ap': self.interface_ap,
+            'interface_deauth': self.interface_deauth,
+            'portal_template': self.portal_template,
+            'deauth_interval': self.deauth_interval,
+            'attack_phase': self.attack_phase,
+            'start_time': self.start_time,
+            'setup_time': self.setup_time,
+            'clients': [c.to_dict() for c in self.clients],
+            'credential_attempts': [a.to_dict() for a in self.credential_attempts],
+            'total_clients_connected': self.total_clients_connected,
+            'total_credential_attempts': self.total_credential_attempts,
+            'successful_validations': self.successful_validations,
+            'captured_password': self.captured_password,
+            'validation_time': self.validation_time
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'EvilTwinAttackState':
+        """Create EvilTwinAttackState from dictionary."""
+        clients = [EvilTwinClientState.from_dict(c) for c in data.get('clients', [])]
+        attempts = [EvilTwinCredentialAttempt.from_dict(a) for a in data.get('credential_attempts', [])]
+        
+        return cls(
+            interface_ap=data.get('interface_ap'),
+            interface_deauth=data.get('interface_deauth'),
+            portal_template=data.get('portal_template', 'generic'),
+            deauth_interval=data.get('deauth_interval', 5),
+            attack_phase=data.get('attack_phase', 'initializing'),
+            start_time=data.get('start_time'),
+            setup_time=data.get('setup_time'),
+            clients=clients,
+            credential_attempts=attempts,
+            total_clients_connected=data.get('total_clients_connected', 0),
+            total_credential_attempts=data.get('total_credential_attempts', 0),
+            successful_validations=data.get('successful_validations', 0),
+            captured_password=data.get('captured_password'),
+            validation_time=data.get('validation_time', 0.0)
+        )
+
+
+@dataclass
 class TargetState:
     """Represents the state of a single target in a session."""
     
@@ -27,6 +141,9 @@ class TargetState:
     status: str = "pending"  # pending, in_progress, completed, failed
     attempts: int = 0
     last_attempt: Optional[float] = None
+    
+    # Evil Twin specific fields
+    evil_twin_state: Optional[Dict[str, Any]] = None  # Evil Twin attack state
     
     @classmethod
     def from_target(cls, target) -> 'TargetState':
@@ -45,7 +162,8 @@ class TargetState:
             channel=int(target.channel) if target.channel else -1,
             encryption=target.encryption if hasattr(target, 'encryption') else 'Unknown',
             power=int(target.power) if hasattr(target, 'power') else 0,
-            wps=bool(target.wps) if hasattr(target, 'wps') else False
+            wps=bool(target.wps) if hasattr(target, 'wps') else False,
+            evil_twin_state=None
         )
     
     def to_dict(self) -> Dict[str, Any]:
@@ -55,6 +173,10 @@ class TargetState:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'TargetState':
         """Create TargetState from dictionary."""
+        # Handle evil_twin_state deserialization
+        evil_twin_data = data.get('evil_twin_state')
+        if evil_twin_data:
+            data['evil_twin_state'] = evil_twin_data  # Already a dict from JSON
         return cls(**data)
 
 
@@ -517,6 +639,115 @@ class SessionManager:
             remaining.append(target)
         
         return remaining
+    
+    def save_evil_twin_state(self, session: SessionState, bssid: str, evil_twin_state: EvilTwinAttackState) -> None:
+        """
+        Save Evil Twin attack state for a specific target.
+        
+        Args:
+            session: SessionState to update
+            bssid: BSSID of target being attacked
+            evil_twin_state: EvilTwinAttackState to save
+        """
+        for target in session.targets:
+            if target.bssid == bssid:
+                target.evil_twin_state = evil_twin_state.to_dict()
+                break
+    
+    def load_evil_twin_state(self, session: SessionState, bssid: str) -> Optional[EvilTwinAttackState]:
+        """
+        Load Evil Twin attack state for a specific target.
+        
+        Args:
+            session: SessionState to query
+            bssid: BSSID of target
+            
+        Returns:
+            EvilTwinAttackState if found, None otherwise
+        """
+        for target in session.targets:
+            if target.bssid == bssid and target.evil_twin_state:
+                return EvilTwinAttackState.from_dict(target.evil_twin_state)
+        return None
+    
+    def clear_evil_twin_state(self, session: SessionState, bssid: str) -> None:
+        """
+        Clear Evil Twin attack state for a specific target.
+        
+        Args:
+            session: SessionState to update
+            bssid: BSSID of target
+        """
+        for target in session.targets:
+            if target.bssid == bssid:
+                target.evil_twin_state = None
+                break
+    
+    def handle_partial_evil_twin_completion(self, session: SessionState, bssid: str) -> Dict[str, Any]:
+        """
+        Handle partial completion of Evil Twin attack.
+        
+        This method analyzes the saved Evil Twin state to determine if the
+        attack made any progress and what should be done on resume.
+        
+        Args:
+            session: SessionState to analyze
+            bssid: BSSID of target
+            
+        Returns:
+            Dictionary with analysis results:
+                - 'can_resume': bool - whether attack can be resumed
+                - 'progress': str - description of progress made
+                - 'clients_connected': int - number of clients that connected
+                - 'credential_attempts': int - number of credential attempts
+                - 'recommendation': str - recommended action
+        """
+        evil_twin_state = self.load_evil_twin_state(session, bssid)
+        
+        if not evil_twin_state:
+            return {
+                'can_resume': False,
+                'progress': 'No saved state found',
+                'clients_connected': 0,
+                'credential_attempts': 0,
+                'recommendation': 'Start new attack'
+            }
+        
+        # Check if attack was successful
+        if evil_twin_state.captured_password:
+            return {
+                'can_resume': False,
+                'progress': 'Attack completed successfully',
+                'clients_connected': evil_twin_state.total_clients_connected,
+                'credential_attempts': evil_twin_state.total_credential_attempts,
+                'recommendation': 'Attack already completed, password captured'
+            }
+        
+        # Analyze progress
+        clients = evil_twin_state.total_clients_connected
+        attempts = evil_twin_state.total_credential_attempts
+        
+        if attempts > 0:
+            progress = f'{clients} clients connected, {attempts} credential attempts made'
+            recommendation = 'Resume attack - clients are attempting to connect'
+        elif clients > 0:
+            progress = f'{clients} clients connected, no credential attempts yet'
+            recommendation = 'Resume attack - clients connected but no credentials submitted'
+        else:
+            progress = 'No clients connected yet'
+            recommendation = 'Resume attack - waiting for clients to connect'
+        
+        # Check attack phase
+        can_resume = evil_twin_state.attack_phase not in ['completed', 'failed']
+        
+        return {
+            'can_resume': can_resume,
+            'progress': progress,
+            'clients_connected': clients,
+            'credential_attempts': attempts,
+            'recommendation': recommendation,
+            'attack_phase': evil_twin_state.attack_phase
+        }
     
     def restore_configuration(self, session: SessionState, config_obj) -> Dict[str, Any]:
         """

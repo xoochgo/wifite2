@@ -244,7 +244,7 @@ class Airmon(Dependency):
             Color.p('{+} Enabling {G}monitor mode{W} on {C}%s{W}... ' % iface_name)
             airmon_output = Process(['airmon-ng', 'start', iface_name]).stdout()
             enabled_interface = Airmon._parse_airmon_start(airmon_output)
-            
+
             # Debug output for troubleshooting airmon-ng parsing issues
             if Configuration.verbose > 0:
                 print(f"\nDEBUG: Full airmon_output = {repr(airmon_output)}")
@@ -307,10 +307,10 @@ class Airmon(Dependency):
         for index, line in enumerate(lines):
             if 'mac80211 monitor mode' not in line:
                 continue
-            
+
             if Configuration.verbose > 0:
                 print(f"DEBUG: Parsing line: {repr(line)}")
-            
+
             # First try to get interface from "on" part if it looks like an interface name
             if matches := enabled_on_re.match(line):
                 result = matches.group(1)

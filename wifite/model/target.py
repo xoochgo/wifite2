@@ -77,7 +77,9 @@ class Target(object):
         self.authentication = fields[7].strip() # Contains auth type(s) like "PSK SAE MGT"
 
         # Determine primary encryption and auth
-        if 'WPA3' in self.encryption:
+        # Note: SAE (Simultaneous Authentication of Equals) is the authentication method for WPA3
+        # If we see SAE in authentication, it's WPA3 even if encryption field doesn't say "WPA3"
+        if 'WPA3' in self.encryption or 'SAE' in self.authentication:
             self.primary_encryption = 'WPA3'
         elif 'WPA2' in self.encryption:
             self.primary_encryption = 'WPA2'
@@ -102,7 +104,7 @@ class Target(object):
         elif 'OWE' in self.authentication: # OWE uses its own auth mechanism
             self.primary_authentication = 'OWE'
         else:
-            self.primary_authentication = self.authentication.split(' ')[0]
+            self.primary_authentication = self.authentication.split(' ')[0] if self.authentication else ''
 
 
         self.power = int(fields[8].strip())
@@ -281,13 +283,15 @@ class Target(object):
             auth_suffix = ''
             if self.primary_encryption == 'WPA3':
                 display_encryption = Color.s('{P}%s' % display_encryption) # Purple for WPA3
-                if self.primary_authentication == 'SAE':
-                    auth_suffix = Color.s('{P}-S') # Purple for SAE
-                elif self.primary_authentication == 'MGT':
-                     auth_suffix = Color.s('{R}-E') # Red for Enterprise
-                # Add PMF indicator for WPA3-only
+                # Don't add -S suffix since WPA3 already implies SAE
+                # Just add PMF indicator if present
                 if self.pmf_status == 'required':
-                    auth_suffix += Color.s('{P}+') # PMF required
+                    auth_suffix = Color.s('{P}+') # PMF required
+                elif self.pmf_status == 'optional':
+                    auth_suffix = Color.s('{O}~') # PMF optional
+                # Only show -E for enterprise WPA3
+                if self.primary_authentication == 'MGT':
+                    auth_suffix = Color.s('{R}-E') + auth_suffix # Red for Enterprise
             elif self.primary_encryption == 'WPA2':
                 display_encryption = Color.s('{O}%s' % display_encryption) # Orange for WPA2
                 if self.primary_authentication == 'PSK':

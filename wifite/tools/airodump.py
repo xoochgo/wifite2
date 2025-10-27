@@ -294,14 +294,12 @@ class Airodump(Dependency):
     def detect_wpa3_capabilities(targets):
         """
         Detect and store WPA3 capabilities for all targets.
-        
         This method analyzes each target's encryption and authentication
         information to determine WPA3 support, transition mode, PMF status,
         and other WPA3-related capabilities.
-        
         Performance: Detection results are cached in target.wpa3_info.
         Subsequent calls to WPA3Detector methods will use cached data.
-        
+
         Args:
             targets: List of Target objects to analyze
         """
@@ -309,10 +307,10 @@ class Airodump(Dependency):
             # Skip if already detected (cached)
             if hasattr(target, 'wpa3_info') and target.wpa3_info is not None:
                 continue
-            
+
             # Detect WPA3 capability (use_cache=False since we're setting it)
             wpa3_info_dict = WPA3Detector.detect_wpa3_capability(target, use_cache=False)
-            
+
             # Create WPA3Info object and attach to target for caching
             target.wpa3_info = WPA3Info.from_dict(wpa3_info_dict)
 

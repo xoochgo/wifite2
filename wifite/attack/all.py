@@ -80,8 +80,17 @@ class AttackAll(object):
         attacks = []
 
         if Configuration.use_eviltwin:
-            # TODO: EvilTwin attack
-            pass
+            # Evil Twin attack - works on WPA/WPA2/WPA3 networks
+            from .eviltwin import EvilTwin
+            if target.primary_encryption.startswith('WPA'):
+                attacks.append(EvilTwin(target))
+            else:
+                Color.pl('{!} {O}Evil Twin attack only works on WPA/WPA2/WPA3 networks{W}')
+                # Mark as failed in session
+                if session and session_mgr:
+                    session_mgr.mark_target_failed(session, target.bssid, "Evil Twin requires WPA/WPA2/WPA3")
+                    session_mgr.save_session(session)
+                return True
 
         elif target.primary_encryption == 'WEP':
             attacks.append(AttackWEP(target))

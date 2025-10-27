@@ -46,6 +46,11 @@ class Bully(Attack, Dependency):
         self.crack_result = None
         self.attack_view = None  # Will be set by AttackWPS if TUI is active
 
+        # M6 message detection for first 4 digits
+        self.m6_detected = False
+        self.first_half_pin = None
+        self.m6_detection_time = None
+
         self.cmd = []
 
         if Process.exists('stdbuf'):
@@ -76,15 +81,15 @@ class Bully(Attack, Dependency):
             else:
                 self.attack_view.set_attack_type("WPS PIN Attack (Bully)")
                 self.attack_view.add_log("Starting WPS PIN brute-force attack with Bully")
-            
+
             # Handle hidden ESSID
             essid_display = self.target.essid if self.target.essid else "<hidden ESSID>"
             self.attack_view.add_log(f"Target: {essid_display} ({self.target.bssid})")
-            
+
             # Handle invalid channel
             channel_display = self.target.channel if self.target.channel and str(self.target.channel) != '-1' else "unknown"
             self.attack_view.add_log(f"Channel: {channel_display}")
-        
+
         with Airodump(channel=self.target.channel,
                       target_bssid=self.target.bssid,
                       skip_wps=True,
@@ -93,7 +98,7 @@ class Bully(Attack, Dependency):
             self.pattack('Waiting for target to appear...')
             if self.attack_view:
                 self.attack_view.add_log("Waiting for target to appear...")
-            
+
             try:
                 self.target = self.wait_for_target(airodump)
                 if self.attack_view:
@@ -143,7 +148,7 @@ class Bully(Attack, Dependency):
             # Update TUI view if available
             if self.attack_view:
                 self.attack_view.refresh_if_needed()
-                
+
                 # Determine attack mode and set attack type
                 if self.pixie_dust:
                     mode = "Pixie Dust"
@@ -151,10 +156,10 @@ class Bully(Attack, Dependency):
                 else:
                     mode = "PIN Brute Force"
                     attack_type = "WPS PIN Attack (Bully)"
-                
+
                 # Set the attack type in the view
                 self.attack_view.set_attack_type(attack_type)
-                
+
                 # Build metrics
                 metrics = {
                     'Mode': mode,
@@ -163,19 +168,23 @@ class Bully(Attack, Dependency):
                     'Timeouts': self.total_timeouts,
                     'Failures': self.total_failures,
                 }
-                
+
+                # Add M6 detection status
+                if self.m6_detected and self.first_half_pin:
+                    metrics['First 4 Digits'] = self.first_half_pin
+                    metrics['Phase'] = 'Attacking last 3 digits'
+
                 if self.last_pin:
                     metrics['Last PIN'] = self.last_pin
-                
+
                 if self.pins_remaining >= 0:
                     metrics['PINs Remaining'] = self.pins_remaining
-                
                 if self.eta:
                     metrics['ETA'] = self.eta
-                
+
                 if self.locked:
                     metrics['Status'] = 'Locked Out'
-                
+
                 # Update view
                 self.attack_view.update_progress({
                     'status': f'{mode}: {Color.strip_color(self.state)}',
@@ -250,6 +259,11 @@ class Bully(Attack, Dependency):
         main_status = self.state
 
         meta_statuses = []
+
+        # Show M6 detection status
+        if self.m6_detected and self.first_half_pin:
+            meta_statuses.append('{G}First4:%s{W}' % self.first_half_pin)
+
         if self.total_timeouts > 0:
             meta_statuses.append('{O}Timeouts:%d{W}' % self.total_timeouts)
 
@@ -368,6 +382,32 @@ class Bully(Attack, Dependency):
 
         if re.search(r".*Running pixiewps with the information", line):
             state = '{G}Running pixiewps...{W}'
+
+        # Detect M6 message which indicates first 4 digits are correct
+        if not self.m6_detected and re.search(r".*Tx\(\s*M6\s*\)", line):
+            self.m6_detected = True
+            self.m6_detection_time = time.time()
+
+            # Extract first 4 digits from last PIN
+            if self.last_pin and len(self.last_pin) >= 4:
+                self.first_half_pin = self.last_pin[:4]
+                state = f'{{G}}First 4 digits found: {self.first_half_pin}{{W}}'
+
+                # Log to TUI if available
+                if self.attack_view:
+                    self.attack_view.add_log(f"✓ M6 detected! First 4 digits: {self.first_half_pin}")
+                    self.attack_view.add_log("Now attacking last 3 digits (1,000 combinations)")
+
+                from ..util.logger import log_info
+                log_info('Bully', f'M6 message detected - First 4 digits: {self.first_half_pin}')
+            else:
+                state = '{G}M6 detected (first half complete){W}'
+                if self.attack_view:
+                    self.attack_view.add_log("✓ M6 detected! First 4 digits are correct")
+
+                from ..util.logger import log_info
+                log_info('Bully', 'M6 message detected - First 4 digits correct')
+
         return state
 
     # TODO Rename this here and in `parse_state`

@@ -147,6 +147,10 @@ class Configuration(object):
         cls.eviltwin_port = 80
         cls.eviltwin_deauth_iface = None
         cls.eviltwin_fakeap_iface = None
+        cls.eviltwin_deauth_interval = 5
+        cls.eviltwin_template = 'generic'
+        cls.eviltwin_channel = None
+        cls.eviltwin_validate_credentials = True
 
         # WEP variables
         cls.wep_filter = False  # Only attack WEP networks
@@ -282,14 +286,8 @@ class Configuration(object):
         cls.parse_wpa_args(args)
         cls.parse_wps_args(args)
         cls.parse_pmkid_args(args)
+        cls.parse_eviltwin_args(args)
         cls.parse_encryption()
-
-        # EvilTwin
-        '''
-        if args.use_eviltwin:
-            cls.use_eviltwin = True
-            Color.pl('{+} {C}option:{W} using {G}eviltwin attacks{W} against all targets')
-        '''
 
         cls.parse_wep_attacks()
 
@@ -324,6 +322,70 @@ class Configuration(object):
         if cls.use_pmkid_only and cls.dont_use_pmkid:
             Color.pl('{!} {R}Bad Configuration:{O} --pmkid and --no-pmkid are not compatible')
             raise RuntimeError('Unable to attack networks: --pmkid and --no-pmkid are not compatible together')
+
+        # Validate Evil Twin configuration
+        if cls.use_eviltwin:
+            cls._validate_eviltwin_config()
+
+    @classmethod
+    def _validate_eviltwin_config(cls):
+        """Validate Evil Twin configuration and interface capabilities."""
+        from .util.interface_manager import InterfaceManager
+
+        # Check if we have AP-capable interfaces
+        ap_interfaces = InterfaceManager.get_ap_capable_interfaces()
+
+        if not ap_interfaces:
+            Color.pl('{!} {R}Error: No AP-capable wireless interfaces found{W}')
+            Color.pl('{!} {O}Evil Twin attack requires a wireless adapter that supports AP mode{W}')
+            Color.pl('{!} {O}Recommended adapters:{W}')
+            Color.pl('{!}   - Alfa AWUS036NHA (Atheros AR9271)')
+            Color.pl('{!}   - TP-Link TL-WN722N v1 (Atheros AR9271)')
+            Color.pl('{!}   - Panda PAU05 (Ralink RT5372)')
+            Color.pl('{!}   - Alfa AWUS036ACH (Realtek RTL8812AU)')
+            raise RuntimeError('No AP-capable interfaces available for Evil Twin attack')
+
+        # If fake AP interface is specified, validate it
+        if cls.eviltwin_fakeap_iface:
+            found = False
+            for caps in ap_interfaces:
+                if caps.interface == cls.eviltwin_fakeap_iface:
+                    found = True
+                    break
+
+            if not found:
+                Color.pl('{!} {R}Error: Specified interface {O}%s{R} does not support AP mode{W}'
+                        % cls.eviltwin_fakeap_iface)
+                Color.pl('{!} {O}Available AP-capable interfaces:{W}')
+                for caps in ap_interfaces:
+                    Color.pl('{!}   - {G}%s{W}' % caps.interface)
+                raise RuntimeError('Specified interface does not support AP mode')
+
+        # Validate port
+        if cls.eviltwin_port < 1 or cls.eviltwin_port > 65535:
+            Color.pl('{!} {R}Error: Invalid port {O}%d{W}' % cls.eviltwin_port)
+            raise RuntimeError('Invalid port number for Evil Twin captive portal')
+
+        # Validate deauth interval
+        if cls.eviltwin_deauth_interval < 1:
+            Color.pl('{!} {R}Error: Deauth interval must be at least 1 second{W}')
+            raise RuntimeError('Invalid deauth interval')
+
+        # Validate channel if specified
+        if cls.eviltwin_channel is not None:
+            if cls.eviltwin_channel < 1 or cls.eviltwin_channel > 165:
+                Color.pl('{!} {R}Error: Invalid channel {O}%d{W}' % cls.eviltwin_channel)
+                raise RuntimeError('Invalid channel for Evil Twin attack')
+
+        # Validate template
+        valid_templates = ['generic', 'tplink', 'netgear', 'linksys']
+        if cls.eviltwin_template not in valid_templates:
+            Color.pl('{!} {R}Error: Invalid template {O}%s{W}' % cls.eviltwin_template)
+            Color.pl('{!} {O}Valid templates: {G}%s{W}' % ', '.join(valid_templates))
+            raise RuntimeError('Invalid captive portal template')
+
+        Color.pl('{+} {G}Evil Twin configuration validated{W}')
+        Color.pl('{+} Found {G}%d{W} AP-capable interface(s)' % len(ap_interfaces))
 
     @classmethod
     def parse_settings_args(cls, args):
@@ -648,6 +710,75 @@ class Configuration(object):
         if args.dont_use_pmkid:
             cls.dont_use_pmkid = True
             Color.pl('{+} {C}option:{W} will NOT use {C}PMKID{W} attack on WPA networks')
+
+    @classmethod
+    def parse_eviltwin_args(cls, args):
+        """Parses Evil Twin-specific arguments"""
+        if args.use_eviltwin:
+            cls.use_eviltwin = True
+            Color.pl('{+} {C}option:{W} using {G}Evil Twin attacks{W} against all targets')
+
+            # Display interface capabilities info
+            cls._display_eviltwin_interface_info()
+
+        if hasattr(args, 'eviltwin_deauth_iface') and args.eviltwin_deauth_iface:
+            cls.eviltwin_deauth_iface = args.eviltwin_deauth_iface
+            Color.pl('{+} {C}option:{W} Evil Twin deauth interface: {G}%s{W}' % args.eviltwin_deauth_iface)
+
+        if hasattr(args, 'eviltwin_fakeap_iface') and args.eviltwin_fakeap_iface:
+            cls.eviltwin_fakeap_iface = args.eviltwin_fakeap_iface
+            Color.pl('{+} {C}option:{W} Evil Twin fake AP interface: {G}%s{W}' % args.eviltwin_fakeap_iface)
+
+        if hasattr(args, 'eviltwin_port') and args.eviltwin_port:
+            cls.eviltwin_port = args.eviltwin_port
+            Color.pl('{+} {C}option:{W} Evil Twin captive portal port: {G}%d{W}' % args.eviltwin_port)
+
+        if hasattr(args, 'eviltwin_deauth_interval') and args.eviltwin_deauth_interval:
+            cls.eviltwin_deauth_interval = args.eviltwin_deauth_interval
+            Color.pl('{+} {C}option:{W} Evil Twin deauth interval: {G}%d seconds{W}' % args.eviltwin_deauth_interval)
+
+        if hasattr(args, 'eviltwin_template') and args.eviltwin_template:
+            cls.eviltwin_template = args.eviltwin_template
+            Color.pl('{+} {C}option:{W} Evil Twin portal template: {G}%s{W}' % args.eviltwin_template)
+
+        if hasattr(args, 'eviltwin_channel') and args.eviltwin_channel:
+            cls.eviltwin_channel = args.eviltwin_channel
+            Color.pl('{+} {C}option:{W} Evil Twin channel override: {G}%d{W}' % args.eviltwin_channel)
+
+        if hasattr(args, 'eviltwin_no_validate') and args.eviltwin_no_validate:
+            cls.eviltwin_validate_credentials = False
+            Color.pl('{+} {C}option:{W} Evil Twin credential validation: {O}disabled{W}')
+
+    @classmethod
+    def _display_eviltwin_interface_info(cls):
+        """Display information about available interfaces for Evil Twin."""
+        try:
+            # Only display interface info in verbose mode to avoid blocking
+            if cls.verbose < 1:
+                return
+
+            from .util.interface_manager import InterfaceManager
+
+            # Get AP-capable interfaces
+            ap_interfaces = InterfaceManager.get_ap_capable_interfaces()
+
+            if ap_interfaces:
+                Color.pl('{+} Found {G}%d{W} AP-capable interface(s):' % len(ap_interfaces))
+                for caps in ap_interfaces:
+                    info_parts = [caps.interface]
+                    if caps.driver:
+                        info_parts.append(f'driver: {caps.driver}')
+                    if caps.chipset:
+                        info_parts.append(f'chipset: {caps.chipset}')
+                    Color.pl('{+}   {G}%s{W}' % ', '.join(info_parts))
+            else:
+                Color.pl('{!} {O}Warning: No AP-capable interfaces detected{W}')
+                Color.pl('{!} {O}Evil Twin attack may not work without AP mode support{W}')
+
+        except Exception as e:
+            # Don't fail if we can't detect interfaces, just warn
+            if cls.verbose > 0:
+                Color.pl('{!} {O}Warning: Could not detect interface capabilities: %s{W}' % str(e))
 
     @classmethod
     def parse_tui_args(cls, args):

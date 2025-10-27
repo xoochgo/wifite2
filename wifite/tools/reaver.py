@@ -33,6 +33,11 @@ class Reaver(Attack, Dependency):
         self.last_pins = set()
         self.last_line_number = 0
 
+        # M6 message detection for first 4 digits
+        self.m6_detected = False
+        self.first_half_pin = None
+        self.m6_detection_time = None
+
         self.crack_result = None
         self.attack_view = None  # Will be set by AttackWPS if TUI is active
 
@@ -107,11 +112,11 @@ class Reaver(Attack, Dependency):
             else:
                 self.attack_view.set_attack_type("WPS PIN Attack (Reaver)")
                 self.attack_view.add_log("Starting WPS PIN brute-force attack with Reaver")
-            
+
             # Handle hidden ESSID
             essid_display = self.target.essid if self.target.essid else "<hidden ESSID>"
             self.attack_view.add_log(f"Target: {essid_display} ({self.target.bssid})")
-            
+
             # Handle invalid channel
             channel_display = self.target.channel if self.target.channel and str(self.target.channel) != '-1' else "unknown"
             self.attack_view.add_log(f"Channel: {channel_display}")
@@ -125,7 +130,7 @@ class Reaver(Attack, Dependency):
             self.pattack('Waiting for target to appear...')
             if self.attack_view:
                 self.attack_view.add_log("Waiting for target to appear...")
-            
+
             try:
                 self.target = self.wait_for_target(airodump)
                 if self.attack_view:
@@ -162,7 +167,7 @@ class Reaver(Attack, Dependency):
                 # Update TUI view if available
                 if self.attack_view:
                     self.attack_view.refresh_if_needed()
-                    
+
                     # Determine attack mode and set attack type
                     if self.pixie_dust:
                         mode = "Pixie Dust"
@@ -173,10 +178,10 @@ class Reaver(Attack, Dependency):
                     else:
                         mode = "PIN Brute Force"
                         attack_type = "WPS PIN Attack (Reaver)"
-                    
+
                     # Set the attack type in the view
                     self.attack_view.set_attack_type(attack_type)
-                    
+
                     # Build metrics
                     metrics = {
                         'Mode': mode,
@@ -184,10 +189,15 @@ class Reaver(Attack, Dependency):
                         'Progress': self.progress,
                         'Attempts': self.total_attempts,
                     }
-                    
+
+                    # Add M6 detection status
+                    if self.m6_detected and self.first_half_pin:
+                        metrics['First 4 Digits'] = self.first_half_pin
+                        metrics['Phase'] = 'Attacking last 3 digits'
+
                     if self.locked:
                         metrics['Status'] = 'Locked Out'
-                    
+
                     # Update view
                     self.attack_view.update_progress({
                         'status': f'{mode}: {self.state}',
@@ -229,6 +239,10 @@ class Reaver(Attack, Dependency):
 
         # Counters, timeouts, failures, locked.
         meta_statuses = []
+
+        # Show M6 detection status
+        if self.m6_detected and self.first_half_pin:
+            meta_statuses.append('{G}First4:%s{W}' % self.first_half_pin)
 
         if self.total_timeouts > 0:
             meta_statuses.append('{O}Timeouts:%d{W}' % self.total_timeouts)
@@ -373,7 +387,39 @@ class Reaver(Attack, Dependency):
             self.total_attempts += len(new_pins.difference(self.last_pins))
             self.last_pins = new_pins
 
-        # TODO: Look for "Sending M6 message" which indicates first 4 digits are correct.
+        # Detect M6 message which indicates first 4 digits are correct
+        if not self.m6_detected and 'Sending M6 message' in stdout_diff:
+            self.m6_detected = True
+            self.m6_detection_time = time.time()
+
+            # Try to extract the current PIN being tested
+            # The last PIN tried before M6 should have correct first 4 digits
+            if self.last_pins:
+                # Get the most recent PIN
+                current_pin = max(self.last_pins)
+                self.first_half_pin = current_pin[:4] if len(current_pin) >= 4 else None
+
+                if self.first_half_pin:
+                    state = f'First 4 digits found: {self.first_half_pin}'
+
+                    # Log to TUI if available
+                    if self.attack_view:
+                        self.attack_view.add_log(f"✓ M6 detected! First 4 digits: {self.first_half_pin}")
+                        self.attack_view.add_log("Now attacking last 3 digits (1,000 combinations)")
+
+                    # Update progress to 50% since first half is done
+                    self.progress = '50.00%'
+
+                    from ..util.logger import log_info
+                    log_info('Reaver', f'M6 message detected - First 4 digits: {self.first_half_pin}')
+            else:
+                # M6 detected but couldn't determine PIN
+                state = 'M6 detected (first half complete)'
+                if self.attack_view:
+                    self.attack_view.add_log("✓ M6 detected! First 4 digits are correct")
+
+                from ..util.logger import log_info
+                log_info('Reaver', 'M6 message detected - First 4 digits correct')
 
         return state
 
