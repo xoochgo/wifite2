@@ -22,7 +22,8 @@ Wifite is designed to use all known methods for retrieving the password of a wir
 4. WPA3: The [SAE Handshake Capture](https://hashcat.net/forum/thread-7717.html) + offline crack.
 5. WPA3: Transition mode downgrade attacks (force WPA2 on mixed networks).
 6. WEP: Various known attacks against WEP, including *fragmentation*, *chop-chop*, *aireplay*, etc.
-7. WIFI Signal jammer, block specific accesspoints or multiple.
+7. **Evil Twin**: Rogue AP attack with captive portal for credential capture. ⚠️ **Requires authorization**
+8. WIFI Signal jammer, block specific accesspoints or multiple.
    signal jamming only works for specific Atheros WiFi chipsets. 
 
 Run wifite, select your targets, and Wifite will automatically start trying to capture or crack the password.
@@ -89,6 +90,13 @@ Second, only the latest versions of these programs are supported and must be ins
    * **Note:** For WPA3 support, you need `hcxdumptool` v6.0.0+ and `hashcat` v6.0.0+ with mode 22000 support.
 * [`macchanger`](https://github.com/alobbs/macchanger): For randomizing MAC addresses to avoid detection and improve anonymity.
 * [`pixiewps`](https://github.com/wiire-a/pixiewps): For WPS Pixie-Dust attacks (alternative implementation).
+
+**For Evil Twin Attacks:**
+
+* [`hostapd`](https://w1.fi/hostapd/): For creating rogue access points (v2.9+ required).
+* [`dnsmasq`](http://www.thekelleys.org.uk/dnsmasq/doc.html): For DHCP and DNS services (v2.80+ required).
+* [`wpa_supplicant`](https://w1.fi/wpa_supplicant/): For validating captured credentials (v2.9+ required).
+* **⚠️ LEGAL WARNING:** Evil Twin attacks require explicit written authorization. Unauthorized use is illegal and may result in criminal prosecution. See [Evil Twin Guide](docs/EVILTWIN_GUIDE.md) for complete legal requirements, usage instructions, and best practices.
 
 
 
@@ -169,6 +177,15 @@ Features
   * **SAE Handshake Capture** - Capture WPA3-SAE authentication for offline cracking
   * **PMF Handling** - Automatic detection and handling of Protected Management Frames
   * **Dragonblood Detection** - Identify networks vulnerable to known WPA3 exploits
+* **Evil Twin Attack** - Rogue AP with captive portal for credential capture (use with: `--eviltwin`)
+  * **Rogue AP Creation** - Mimics target network with identical SSID and channel
+  * **Captive Portal** - Realistic login pages (multiple templates: generic, TP-Link, Netgear, Linksys)
+  * **Real-time Validation** - Tests credentials against legitimate AP automatically
+  * **Client Monitoring** - Tracks connected clients and credential attempts in real-time
+  * **Session Management** - Resume interrupted attacks with full state preservation
+  * **Smart Deauthentication** - Automatically forces clients to rogue AP
+  * **📖 Complete Guide:** [Evil Twin Attack Guide](docs/EVILTWIN_GUIDE.md)
+  * **🔧 Troubleshooting:** [Evil Twin Troubleshooting](docs/EVILTWIN_TROUBLESHOOTING.md)
 
 ### Smart Features
 * **Automatic Target Detection** - Scans and identifies vulnerable networks
@@ -471,6 +488,42 @@ For more help, please [open an issue](https://github.com/kimocoder/wifite2/issue
 - Wireless card model and chipset
 - Full command output with `-vvv` flag
 - Error messages or unexpected behavior
+
+
+Documentation
+-------------
+
+### Comprehensive Guides
+
+* **[Evil Twin Attack Guide](docs/EVILTWIN_GUIDE.md)** - Complete guide to Evil Twin attacks
+  * Hardware and software requirements
+  * Usage examples and advanced options
+  * Captive portal templates
+  * Detection and defense strategies
+  * Best practices for authorized testing
+
+* **[Evil Twin Troubleshooting](docs/EVILTWIN_TROUBLESHOOTING.md)** - Evil Twin-specific issues and solutions
+  * Interface compatibility problems
+  * Network service configuration
+  * Client connection issues
+  * Credential validation failures
+  * Common error messages and fixes
+
+* **[TUI (Text User Interface) Guide](docs/TUI_README.md)** - Interactive mode documentation
+
+* **[WPA3 Troubleshooting](docs/WPA3_TROUBLESHOOTING.md)** - WPA3-specific issues and solutions
+
+### Quick Reference
+
+For quick help on any feature, use the verbose help flag:
+```bash
+sudo wifite -h -v    # Show all options with examples
+```
+
+For Evil Twin specific help:
+```bash
+sudo wifite -h -v | grep -A 20 "EVIL TWIN"
+```
 
 
 Contributing
