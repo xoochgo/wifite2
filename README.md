@@ -1,4 +1,4 @@
-[![GitHub version](https://img.shields.io/badge/version-2.8.2-informational.svg)](#)
+[![GitHub version](https://img.shields.io/badge/version-2.9.9-beta-informational.svg)](#)
 [![GitHub issues](https://img.shields.io/github/issues/kimocoder/wifite2.svg)](https://github.com/kimocoder/wifite2/issues)
 [![GitHub forks](https://img.shields.io/github/forks/kimocoder/wifite2.svg)](https://github.com/kimocoder/wifite2/network)
 [![GitHub stars](https://img.shields.io/github/stars/kimocoder/wifite2.svg)](https://github.com/kimocoder/wifite2/stargazers)
@@ -22,7 +22,7 @@ Wifite is designed to use all known methods for retrieving the password of a wir
 4. WPA3: The [SAE Handshake Capture](https://hashcat.net/forum/thread-7717.html) + offline crack.
 5. WPA3: Transition mode downgrade attacks (force WPA2 on mixed networks).
 6. WEP: Various known attacks against WEP, including *fragmentation*, *chop-chop*, *aireplay*, etc.
-7. **Evil Twin**: Rogue AP attack with captive portal for credential capture. ⚠️ **Requires authorization**
+7. **Evil Twin**: Rogue AP attack with captive portal for credential capture.
 8. WIFI Signal jammer, block specific accesspoints or multiple.
    signal jamming only works for specific Atheros WiFi chipsets. 
 
@@ -64,7 +64,7 @@ Second, only the latest versions of these programs are supported and must be ins
 **Required:**
 
 * Suggest using `python3` as `python2` was marked deprecated as of january 2020.
-* As we moved from older python and changed to fully support and run on `python3.11`
+* As we moved from older python and changed to fully support and run on `python3.14`
 * [`Iw`](https://wireless.wiki.kernel.org/en/users/documentation/iw): For identifying wireless devices already in Monitor Mode.
 * [`Ip`](https://packages.debian.org/buster/net-tools): For starting/stopping wireless devices.
 * [`Aircrack-ng`](https://aircrack-ng.org/) suite, includes:
