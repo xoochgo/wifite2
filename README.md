@@ -212,6 +212,8 @@ Features
   * **Automatic Assignment** - Intelligently assigns interfaces based on capabilities
   * **Manual Control** - Specify primary and secondary interfaces manually
   * **Backward Compatible** - Seamlessly falls back to single interface mode
+  * **📖 Complete Guide:** [Dual Interface Guide](docs/DUAL_INTERFACE_GUIDE.md)
+  * **🔧 Troubleshooting:** [Dual Interface Troubleshooting](docs/DUAL_INTERFACE_TROUBLESHOOTING.md)
 
 ### Smart Features
 * **Automatic Target Detection** - Scans and identifies vulnerable networks
@@ -632,6 +634,15 @@ Wifite2 stands on the shoulders of giants. We are deeply grateful to the followi
 * **[Rich](https://github.com/Textualize/rich)** - Will McGugan and contributors
   * Beautiful terminal formatting and TUI components
   * Powers the modern wifite interface
+
+### Security Research
+
+* **[Mathy Vanhoef](https://twitter.com/vanhoefm)** - Security researcher
+  * Discovered KRACK attacks (Key Reinstallation Attacks) against WPA2
+  * Discovered Dragonblood vulnerabilities in WPA3
+  * Discovered FragAttacks (Fragmentation and Aggregation Attacks)
+  * His research has significantly advanced WiFi security understanding
+  * [Personal website](https://www.mathyvanhoef.com/)
 
 ### Original Project
 
