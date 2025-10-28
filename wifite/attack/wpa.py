@@ -127,6 +127,7 @@ class AttackWPA(Attack):
         # Start TUI view if available
         if self.view:
             self.view.start()
+            # Attack type will be updated with mode info after interface assignment
             self.view.set_attack_type("WPA Handshake Capture")
 
         # Skip if target is not WPS
@@ -271,8 +272,12 @@ class AttackWPA(Attack):
         # Check if hcxdump mode is requested
         use_hcxdump_mode = False
         if Configuration.use_hcxdump:
+            from ..util.logger import log_info, log_warning, log_debug
+            log_debug('AttackWPA', 'Checking hcxdumptool availability for --hcxdump mode')
+            
             # Check if hcxdumptool is available
             if not HcxDumpTool.exists():
+                log_warning('AttackWPA', 'hcxdumptool not found, falling back to airodump-ng')
                 Color.pl('{!} {O}hcxdumptool not found{W}')
                 Color.pl('{!} {O}Install from: {C}%s{W}' % HcxDumpTool.dependency_url)
                 Color.pl('{!} {O}Falling back to airodump-ng mode{W}')
@@ -280,38 +285,51 @@ class AttackWPA(Attack):
                 # Check minimum version requirement (6.2.0+)
                 if not HcxDumpTool.check_minimum_version('6.2.0'):
                     current_version = HcxDumpTool.check_version()
+                    log_warning('AttackWPA', f'hcxdumptool version {current_version} is insufficient (need 6.2.0+), falling back to airodump-ng')
                     Color.pl('{!} {O}hcxdumptool version {R}%s{O} is insufficient{W}' % (current_version or 'unknown'))
                     Color.pl('{!} {O}Minimum required version: {G}6.2.0{W}')
                     Color.pl('{!} {O}Falling back to airodump-ng mode{W}')
                 else:
                     # All checks passed, use hcxdump mode
                     use_hcxdump_mode = True
+                    log_info('AttackWPA', 'hcxdumptool mode activated for dual interface capture')
                     Color.pl('{+} {G}Using hcxdumptool for dual interface capture{W}')
                     if self.view:
                         self.view.add_log('Using hcxdumptool mode for capture')
         
         try:
+            from ..util.logger import log_info, log_debug, log_error
+            
             # Extract interfaces from assignment
             self.capture_interface = self.interface_assignment.primary
             self.deauth_interface = self.interface_assignment.secondary
             
-            Color.pl('\n{+} {C}Running WPA attack in dual interface mode{W}')
+            log_info('AttackWPA', f'Starting dual interface WPA attack: capture={self.capture_interface}, deauth={self.deauth_interface}')
+            
+            Color.pl('\n{+} {C}Running WPA attack in dual interface mode [DUAL]{W}')
             Color.pl('{+} {C}Capture interface: {G}%s{W}' % self.capture_interface)
             Color.pl('{+} {C}Deauth interface: {G}%s{W}' % self.deauth_interface)
             
             if self.view:
+                # Update attack type to show dual interface mode
+                mode_tag = "[DUAL-HCX]" if use_hcxdump_mode else "[DUAL]"
+                self.view.set_attack_type(f"WPA Handshake Capture {mode_tag}")
                 self.view.add_log(f"Dual interface mode: Capture={self.capture_interface}, Deauth={self.deauth_interface}")
             
             # Put both interfaces in monitor mode (validation already done at startup)
+            log_debug('AttackWPA', f'Enabling monitor mode on capture interface {self.capture_interface}')
             Color.pl('{+} {C}Enabling monitor mode on capture interface {G}%s{W}...' % self.capture_interface)
             capture_monitor = Airmon.start(self.capture_interface)
             if not capture_monitor:
+                log_error('AttackWPA', f'Failed to enable monitor mode on capture interface {self.capture_interface}')
                 Color.pl('{!} {R}Failed to enable monitor mode on capture interface{W}')
                 return None
             
+            log_debug('AttackWPA', f'Enabling monitor mode on deauth interface {self.deauth_interface}')
             Color.pl('{+} {C}Enabling monitor mode on deauth interface {G}%s{W}...' % self.deauth_interface)
             deauth_monitor = Airmon.start(self.deauth_interface)
             if not deauth_monitor:
+                log_error('AttackWPA', f'Failed to enable monitor mode on deauth interface {self.deauth_interface}')
                 Color.pl('{!} {R}Failed to enable monitor mode on deauth interface{W}')
                 # Try to stop the capture monitor interface
                 Airmon.stop(capture_monitor)
@@ -321,7 +339,8 @@ class AttackWPA(Attack):
             self.capture_interface = capture_monitor
             self.deauth_interface = deauth_monitor
             
-            Color.pl('{+} {G}Monitor mode enabled on both interfaces{W}')
+            log_info('AttackWPA', f'Monitor mode enabled on both interfaces: {self.capture_interface}, {self.deauth_interface}')
+            Color.pl('{+} {G}Monitor mode enabled on both interfaces [DUAL]{W}')
             Color.pl('{+} {C}Capture: {G}%s{W}, Deauth: {G}%s{W}' % (self.capture_interface, self.deauth_interface))
             
             if self.view:
@@ -335,14 +354,16 @@ class AttackWPA(Attack):
             
             # Route to appropriate capture method based on configuration
             if use_hcxdump_mode:
-                Color.pl('{+} {C}Using hcxdumptool capture method{W}')
+                log_info('AttackWPA', 'Routing to hcxdumptool capture method [DUAL-HCX]')
+                Color.pl('{+} {C}Using hcxdumptool capture method [DUAL-HCX]{W}')
                 if self.view:
-                    self.view.add_log('Capture method: hcxdumptool')
+                    self.view.add_log('Capture method: hcxdumptool [DUAL-HCX]')
                 handshake = self._capture_handshake_dual_hcxdump()
             else:
-                Color.pl('{+} {C}Using airodump-ng capture method{W}')
+                log_info('AttackWPA', 'Routing to airodump-ng capture method [DUAL]')
+                Color.pl('{+} {C}Using airodump-ng capture method [DUAL]{W}')
                 if self.view:
-                    self.view.add_log('Capture method: airodump-ng')
+                    self.view.add_log('Capture method: airodump-ng [DUAL]')
                 handshake = self._capture_handshake_dual_airodump()
             
             # Stop monitor mode on both interfaces
@@ -422,10 +443,12 @@ class AttackWPA(Attack):
                     self.view.update_progress({
                         'status': f'Listening for handshake (clients: {len(self.clients)}) [DUAL]',
                         'metrics': {
+                            'Mode': 'DUAL (airodump-ng)',
+                            'Capture': self.capture_interface,
+                            'Deauth': self.deauth_interface,
                             'Clients': len(self.clients),
                             'Deauth Timer': str(deauth_timer),
-                            'Timeout': str(timeout_timer),
-                            'Mode': 'Dual Interface'
+                            'Timeout': str(timeout_timer)
                         }
                     })
                 
@@ -459,11 +482,16 @@ class AttackWPA(Attack):
                 copy(cap_file, temp_file)
                 
                 # Check cap file for handshake
+                from ..util.logger import log_debug, log_info
                 bssid = airodump_target.bssid
                 essid = airodump_target.essid if airodump_target.essid_known else None
+                log_debug('AttackWPA', f'Checking for handshake in capture file (BSSID: {bssid})')
+                
                 handshake = Handshake(temp_file, bssid=bssid, essid=essid)
                 if handshake.has_handshake():
                     # We got a handshake
+                    log_info('AttackWPA', f'Handshake captured successfully for {bssid} [DUAL]')
+                    
                     Color.clear_entire_line()
                     Color.pattack('WPA',
                                   airodump_target,
@@ -479,8 +507,10 @@ class AttackWPA(Attack):
                             'progress': 1.0,
                             'metrics': {
                                 'Handshake': '✓',
-                                'Clients': len(self.clients),
-                                'Mode': 'Dual Interface'
+                                'Mode': 'DUAL (airodump-ng)',
+                                'Capture': self.capture_interface,
+                                'Deauth': self.deauth_interface,
+                                'Clients': len(self.clients)
                             }
                         })
                     
@@ -568,9 +598,10 @@ class AttackWPA(Attack):
         
         # Report overall status
         if capture_success and deauth_success:
-            Color.pl('{+} {G}Both interfaces set to channel %d{W}' % target_channel)
+            Color.pl('{+} {G}Both interfaces set to channel %d [DUAL]{W}' % target_channel)
+            Color.pl('{+} {C}  Capture: {G}%s{W}, Deauth: {G}%s{W}' % (self.capture_interface, self.deauth_interface))
             if self.view:
-                self.view.add_log(f'Both interfaces set to channel {target_channel}')
+                self.view.add_log(f'Both interfaces set to channel {target_channel} [DUAL]')
         elif capture_success or deauth_success:
             working_iface = self.capture_interface if capture_success else self.deauth_interface
             Color.pl('{!} {O}Warning: Only %s successfully set to channel %d{W}' % (working_iface, target_channel))
@@ -618,9 +649,12 @@ class AttackWPA(Attack):
             
             # Log success if both match
             if capture_channel == target_channel and deauth_channel == target_channel:
-                Color.pl('{+} {G}Both interfaces verified on channel %d{W}' % target_channel)
+                Color.pl('{+} {G}Both interfaces verified on channel %d [DUAL]{W}' % target_channel)
+                Color.pl('{+} {C}  %s: ch %d, %s: ch %d{W}' % (
+                    self.capture_interface, capture_channel,
+                    self.deauth_interface, deauth_channel))
                 if self.view:
-                    self.view.add_log(f'Channel sync verified: both on channel {target_channel}')
+                    self.view.add_log(f'Channel sync verified: both on channel {target_channel} [DUAL]')
         
         except Exception as e:
             log_warning('AttackWPA', f'Failed to verify channel synchronization: {e}')
@@ -645,10 +679,10 @@ class AttackWPA(Attack):
             Color.pattack('WPA',
                           target,
                           'Handshake capture',
-                          'Deauthing {O}%s{W} [from {C}%s{W}]' % (target_name, self.deauth_interface))
+                          'Deauthing {O}%s{W} [DUAL] from {C}%s{W}' % (target_name, self.deauth_interface))
             
             if self.view:
-                self.view.add_log(f'Sending deauth to {target_name} from {self.deauth_interface}')
+                self.view.add_log(f'Deauth [DUAL] to {target_name} from {self.deauth_interface}')
             
             # Send deauth from dedicated deauth interface
             Aireplay.deauth(target.bssid, 
@@ -781,12 +815,12 @@ class AttackWPA(Attack):
                     self.view.update_progress({
                         'status': f'Listening for handshake (clients: {len(self.clients)}) [DUAL-HCX]',
                         'metrics': {
+                            'Mode': 'DUAL-HCX (hcxdumptool)',
+                            'Capture': self.capture_interface,
+                            'Deauth': self.deauth_interface,
                             'Clients': len(self.clients),
                             'Deauth Timer': str(deauth_timer),
-                            'Timeout': str(timeout_timer),
-                            'Mode': 'Dual Interface (hcxdumptool)',
-                            'Capture': self.capture_interface,
-                            'Deauth': self.deauth_interface
+                            'Timeout': str(timeout_timer)
                         }
                     })
                 
@@ -801,14 +835,14 @@ class AttackWPA(Attack):
                 
                 # Check if hcxdumptool is still running
                 if not hcxdump.is_running():
+                    from ..util.logger import log_error, log_info
+                    log_error('AttackWPA', 'hcxdumptool process died unexpectedly during capture')
+                    log_info('AttackWPA', 'Falling back to airodump-ng capture method')
+                    
                     Color.pl('\n{!} {R}hcxdumptool process died unexpectedly{W}')
                     Color.pl('{!} {O}Falling back to airodump-ng mode{W}')
                     if self.view:
                         self.view.add_log('hcxdumptool process died - falling back to airodump-ng')
-                    
-                    # Log error details for debugging
-                    from ..util.logger import log_debug
-                    log_debug('AttackWPA', 'hcxdumptool process terminated unexpectedly during capture')
                     
                     # Fall back to airodump-ng capture
                     return self._capture_handshake_dual_airodump()
@@ -834,6 +868,9 @@ class AttackWPA(Attack):
                 temp_hash_file = Configuration.temp('handshake_check.22000')
                 
                 # Filter by target BSSID when converting
+                from ..util.logger import log_debug
+                log_debug('AttackWPA', f'Checking for handshake in capture file (BSSID: {self.target.bssid})')
+                
                 if HcxPcapngTool.convert_to_hashcat(
                     output_file,
                     temp_hash_file,
@@ -843,6 +880,9 @@ class AttackWPA(Attack):
                     # Check if the hash file contains a valid handshake
                     if os.path.exists(temp_hash_file) and os.path.getsize(temp_hash_file) > 0:
                         # We got a handshake!
+                        from ..util.logger import log_info
+                        log_info('AttackWPA', f'Handshake captured successfully for {self.target.bssid} [DUAL-HCX]')
+                        
                         Color.clear_entire_line()
                         Color.pattack('WPA',
                                       self.target,
@@ -857,8 +897,10 @@ class AttackWPA(Attack):
                                 'progress': 1.0,
                                 'metrics': {
                                     'Handshake': '✓',
-                                    'Clients': len(self.clients),
-                                    'Mode': 'Dual Interface (hcxdumptool)'
+                                    'Mode': 'DUAL-HCX (hcxdumptool)',
+                                    'Capture': self.capture_interface,
+                                    'Deauth': self.deauth_interface,
+                                    'Clients': len(self.clients)
                                 }
                             })
                         
