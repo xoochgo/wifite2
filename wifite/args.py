@@ -412,6 +412,48 @@ against the real AP and captures valid passwords.
                           dest='no_tui',
                           help=Color.s('Use classic text mode, disable TUI (default: {G}auto-detect{W})'))
 
+        # Dual interface support
+        glob.add_argument('--dual-interface',
+                          action='store_true',
+                          dest='dual_interface',
+                          help=Color.s('Enable dual interface mode for simultaneous AP and deauth operations. '
+                                      'Automatically assigns two interfaces when available for improved attack '
+                                      'performance. Eliminates mode switching in Evil Twin attacks. (default: {G}auto{W})'))
+
+        glob.add_argument('--no-dual-interface',
+                          action='store_true',
+                          dest='no_dual_interface',
+                          help=Color.s('Disable dual interface mode, force single interface operation. '
+                                      'Uses traditional mode-switching approach even when multiple interfaces '
+                                      'are available. (default: {G}off{W})'))
+
+        glob.add_argument('--interface-primary',
+                          action='store',
+                          dest='interface_primary',
+                          metavar='[interface]',
+                          type=str,
+                          help=self._verbose('Manually specify primary interface for AP mode or packet capture. '
+                                            'Used as the main interface for hosting rogue AP (Evil Twin) or '
+                                            'capturing handshakes (WPA). Requires interface to support required '
+                                            'capabilities for the attack type.'))
+
+        glob.add_argument('--interface-secondary',
+                          action='store',
+                          dest='interface_secondary',
+                          metavar='[interface]',
+                          type=str,
+                          help=self._verbose('Manually specify secondary interface for deauthentication or monitoring. '
+                                            'Used for sending deauth packets while primary interface maintains '
+                                            'AP or capture operations. Enables parallel operations without mode switching.'))
+
+        glob.add_argument('--hcxdump',
+                          action='store_true',
+                          dest='use_hcxdump',
+                          help=Color.s('Use {C}hcxdumptool{W} for dual interface WPA handshake capture. '
+                                      'Provides PMF-aware capture and full spectrum monitoring. '
+                                      'Falls back to airodump-ng if hcxdumptool is unavailable. '
+                                      'Requires hcxdumptool v6.2.0+ (default: {G}off{W})'))
+
     def _add_eviltwin_args(self, group):
         group.add_argument('--eviltwin',
                           action='store_true',

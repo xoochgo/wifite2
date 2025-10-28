@@ -12,7 +12,7 @@ class Configuration(object):
 
     initialized = False  # Flag indicating config has been initialized
     verbose = 0
-    version = '2.8.1'
+    version = '2.9.9-beta'
 
     all_bands = None
     attack_max = None
@@ -58,6 +58,13 @@ class Configuration(object):
     use_bully = None
     use_reaver = None
     use_eviltwin = None
+    # Dual interface support
+    dual_interface_enabled = None
+    interface_primary = None
+    interface_secondary = None
+    auto_assign_interfaces = None
+    prefer_dual_interface = None
+    use_hcxdump = None
     # Session resume flags
     resume = None
     resume_latest = None
@@ -151,6 +158,14 @@ class Configuration(object):
         cls.eviltwin_template = 'generic'
         cls.eviltwin_channel = None
         cls.eviltwin_validate_credentials = True
+
+        # Dual interface support
+        cls.dual_interface_enabled = False  # Enable dual interface mode
+        cls.interface_primary = None  # Primary interface name
+        cls.interface_secondary = None  # Secondary interface name
+        cls.auto_assign_interfaces = True  # Auto-assign interfaces (default True)
+        cls.prefer_dual_interface = True  # Prefer dual over single when available (default True)
+        cls.use_hcxdump = False  # Use hcxdumptool for dual interface WPA capture (default False)
 
         # WEP variables
         cls.wep_filter = False  # Only attack WEP networks
@@ -287,6 +302,7 @@ class Configuration(object):
         cls.parse_wps_args(args)
         cls.parse_pmkid_args(args)
         cls.parse_eviltwin_args(args)
+        cls.parse_dual_interface_args(args)
         cls.parse_encryption()
 
         cls.parse_wep_attacks()
@@ -781,6 +797,52 @@ class Configuration(object):
                 Color.pl('{!} {O}Warning: Could not detect interface capabilities: %s{W}' % str(e))
 
     @classmethod
+    def parse_dual_interface_args(cls, args):
+        """Parses dual interface-specific arguments"""
+        # Check if dual interface mode is explicitly enabled
+        if hasattr(args, 'dual_interface') and args.dual_interface:
+            cls.dual_interface_enabled = True
+            Color.pl('{+} {C}option:{W} dual interface mode {G}enabled{W}')
+
+        # Check if dual interface mode is explicitly disabled
+        if hasattr(args, 'no_dual_interface') and args.no_dual_interface:
+            cls.dual_interface_enabled = False
+            cls.prefer_dual_interface = False
+            Color.pl('{+} {C}option:{W} dual interface mode {O}disabled{W} (single interface mode)')
+
+        # Manual primary interface selection
+        if hasattr(args, 'interface_primary') and args.interface_primary:
+            cls.interface_primary = args.interface_primary
+            Color.pl('{+} {C}option:{W} primary interface: {G}%s{W}' % args.interface_primary)
+            # If primary is specified, enable dual interface mode
+            if not hasattr(args, 'no_dual_interface') or not args.no_dual_interface:
+                cls.dual_interface_enabled = True
+
+        # Manual secondary interface selection
+        if hasattr(args, 'interface_secondary') and args.interface_secondary:
+            cls.interface_secondary = args.interface_secondary
+            Color.pl('{+} {C}option:{W} secondary interface: {G}%s{W}' % args.interface_secondary)
+            # If secondary is specified, enable dual interface mode
+            if not hasattr(args, 'no_dual_interface') or not args.no_dual_interface:
+                cls.dual_interface_enabled = True
+
+        # Validate manual interface selection
+        if cls.interface_primary and cls.interface_secondary:
+            if cls.interface_primary == cls.interface_secondary:
+                Color.pl('{!} {R}Error: Primary and secondary interfaces must be different{W}')
+                raise ValueError('Primary and secondary interfaces cannot be the same')
+
+        # Auto-assign setting (default is True)
+        if hasattr(args, 'no_auto_assign') and args.no_auto_assign:
+            cls.auto_assign_interfaces = False
+            Color.pl('{+} {C}option:{W} automatic interface assignment {O}disabled{W}')
+
+        # hcxdump mode for dual interface WPA capture
+        if hasattr(args, 'use_hcxdump') and args.use_hcxdump:
+            cls.use_hcxdump = True
+            Color.pl('{+} {C}option:{W} using {G}hcxdumptool{W} for dual interface WPA capture')
+
+    @classmethod
     def parse_tui_args(cls, args):
         """Parse TUI-related arguments"""
         if args.use_tui:
@@ -908,6 +970,21 @@ class Configuration(object):
         code = 0
         cls.delete_temp()
         Macchanger.reset_if_changed()
+        
+        # Clean up managed interfaces (Task 10.4)
+        try:
+            from .util.interface_manager import InterfaceManager
+            from .util.logger import log_info, log_debug
+            
+            # Check if we have an interface manager instance to clean up
+            if hasattr(cls, 'interface_manager') and cls.interface_manager is not None:
+                log_info('Config', 'Cleaning up managed interfaces')
+                restored = cls.interface_manager.cleanup_all()
+                log_debug('Config', f'Restored {restored} interface(s)')
+        except Exception as e:
+            from .util.logger import log_error
+            log_error('Config', f'Error during interface cleanup: {e}', e)
+        
         from .tools.airmon import Airmon
         if cls.interface is not None and Airmon.base_interface is not None:
             if not cls.daemon:

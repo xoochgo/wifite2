@@ -126,18 +126,36 @@ class Airmon(Dependency):
         Manually put interface into monitor mode (no airmon-ng or vif).
         Fix for bad drivers like the rtl8812AU.
         """
+        from ..util.process import Process
+        
         Ip.down(interface)
+        
         if isdeprecated:
-            Process(['iwconfig', interface, 'mode', 'monitor']).stdout()
+            result = Process(['iwconfig', interface, 'mode', 'monitor']).stdout()
+            if Configuration.verbose > 0:
+                Color.pl('{D}iwconfig output: %s{W}' % result)
         else:
-            Iw.mode(interface, 'monitor')
+            # Use iw to set monitor mode
+            (out, err) = Process.call(f'iw dev {interface} set type monitor')
+            if Configuration.verbose > 0:
+                Color.pl('{D}iw set type monitor output: %s{W}' % out)
+                if err:
+                    Color.pl('{D}iw set type monitor error: %s{W}' % err)
+            if err and 'command failed' in err.lower():
+                Color.pl('{!} {O}Warning: iw command may have failed: %s{W}' % err)
+        
         Ip.up(interface)
+        
+        # Give the interface a moment to come up
+        time.sleep(0.5)
 
         # /sys/class/net/wlan0/type
         iface_type_path = os.path.join('/sys/class/net', interface, 'type')
         if os.path.exists(iface_type_path):
-            with open(iface_type_path, 'r'):
-                pass
+            with open(iface_type_path, 'r') as f:
+                iface_type = f.read().strip()
+                if Configuration.verbose > 0:
+                    Color.pl('{D}Interface type from sysfs: %s{W}' % iface_type)
 
         return interface
 
@@ -238,49 +256,25 @@ class Airmon(Dependency):
                     Color.pl('{O}con_mode path not found for ICNSS2. Trying other methods...{W}')
 
 
-        # If driver is deprecated then skip airmon-ng
-        if driver not in Airmon.DEPRECATED_DRIVERS:
-            # Try to enable using Airmon-ng first (for better compatibility)
-            Color.p('{+} Enabling {G}monitor mode{W} on {C}%s{W}... ' % iface_name)
-            airmon_output = Process(['airmon-ng', 'start', iface_name]).stdout()
-            enabled_interface = Airmon._parse_airmon_start(airmon_output)
+        # Always use ip/iw method for better compatibility
+        # This works for all drivers and is compatible with hcxdumptool (used for WPA3/PMKID)
+        # airmon-ng creates interfaces that hcxdumptool doesn't work well with
+        Color.p('{+} Enabling {G}monitor mode{W} on {C}%s{W}... ' % iface_name)
+        
+        # Determine if driver needs special handling
+        Airmon.isdeprecated = driver in Airmon.DEPRECATED_DRIVERS
+        enabled_interface = Airmon.start_bad_driver(iface_name, Airmon.isdeprecated)
+        cls.use_ipiw = True
 
-            # Debug output for troubleshooting airmon-ng parsing issues
-            if Configuration.verbose > 0:
-                print(f"\nDEBUG: Full airmon_output = {repr(airmon_output)}")
-                print(f"DEBUG: enabled_interface = {repr(enabled_interface)}")
-
-                # Debug the parsing step by step
-                lines = airmon_output.split('\n')
-                for i, line in enumerate(lines):
-                    if 'mac80211 monitor mode' in line:
-                        print(f"DEBUG: Found monitor mode line {i}: {repr(line)}")
-        else:
-            enabled_interface = None
-
-        # if it fails, try to use ip/iw
+        # Verify monitor mode was enabled
         if enabled_interface is None:
-            Airmon.isdeprecated = driver in Airmon.DEPRECATED_DRIVERS
-            enabled_interface = Airmon.start_bad_driver(iface_name, Airmon.isdeprecated)
-        else:
-            # If not, just set for us know how it went in monitor mode
-            cls.use_ipiw = True
+            Color.pl('{R}failed to enable monitor mode using ip/iw.{W}')
+            raise Exception('Failed to enable monitor mode')
 
-        if not Airmon.isdeprecated:
-            # if that also fails, just give up
-            if enabled_interface is None:
-                Color.pl('{R}failed to enable monitor mode using standard methods.{W}')
-                raise Exception('Failed to enable monitor mode')
-
-            # Assert that there is an interface in monitor mode
-            # interfaces = Iw.get_interfaces(mode='monitor') # This might be too early if mon iface has a new name
-            # We rely on Iw.is_monitor(enabled_interface) or similar check later.
-            if not Iw.is_monitor(enabled_interface):
-                 # Airmon-ng sometimes creates a new interface (e.g. wlan0mon)
-                 # We need to check if *any* monitor interface was created if enabled_interface itself is not in mon mode.
-                 # However, our _parse_airmon_start should return the *new* monitor interface name.
-                Color.pl('{R}interface %s not in monitor mode after airmon-ng/iw.{W}' % enabled_interface)
-                raise Exception(f'Interface {enabled_interface} not in monitor mode after airmon-ng/iw')
+        # Verify interface is actually in monitor mode
+        if not Iw.is_monitor(enabled_interface):
+            Color.pl('{R}interface %s not in monitor mode after ip/iw.{W}' % enabled_interface)
+            raise Exception(f'Interface {enabled_interface} not in monitor mode after ip/iw')
 
 
         # No errors found; the device 'enabled_iface' was put into Mode:Monitor.

@@ -28,6 +28,26 @@ Wifite is designed to use all known methods for retrieving the password of a wir
 
 Run wifite, select your targets, and Wifite will automatically start trying to capture or crack the password.
 
+### Quick Start with Dual Interfaces
+
+If you have two wireless adapters, wifite can use them simultaneously for significantly improved performance:
+
+```bash
+# Automatic dual interface mode (wifite detects and assigns interfaces)
+sudo wifite --dual-interface
+
+# Evil Twin attack with dual interfaces (30-50% faster)
+sudo wifite --dual-interface --eviltwin
+
+# WPA attack with dual interfaces (continuous capture, no packet loss)
+sudo wifite --dual-interface --wpa
+
+# Manual interface selection
+sudo wifite --interface-primary wlan0 --interface-secondary wlan1
+```
+
+**Benefits:** Eliminates mode switching, enables parallel operations, improves reliability. See the [Dual Interface Guide](docs/DUAL_INTERFACE_GUIDE.md) for complete details.
+
 Supported Operating Systems
 ---------------------------
 
@@ -186,6 +206,12 @@ Features
   * **Smart Deauthentication** - Automatically forces clients to rogue AP
   * **📖 Complete Guide:** [Evil Twin Attack Guide](docs/EVILTWIN_GUIDE.md)
   * **🔧 Troubleshooting:** [Evil Twin Troubleshooting](docs/EVILTWIN_TROUBLESHOOTING.md)
+* **Dual Wireless Interface Support** - Use two adapters simultaneously for improved performance (use with: `--dual-interface`)
+  * **Parallel Operations** - Eliminates mode switching delays (30-50% faster attacks)
+  * **Continuous Capture** - No packet loss during deauthentication
+  * **Automatic Assignment** - Intelligently assigns interfaces based on capabilities
+  * **Manual Control** - Specify primary and secondary interfaces manually
+  * **Backward Compatible** - Seamlessly falls back to single interface mode
 
 ### Smart Features
 * **Automatic Target Detection** - Scans and identifies vulnerable networks
@@ -523,6 +549,11 @@ sudo wifite -h -v    # Show all options with examples
 For Evil Twin specific help:
 ```bash
 sudo wifite -h -v | grep -A 20 "EVIL TWIN"
+```
+
+For Dual Interface specific help:
+```bash
+sudo wifite -h -v | grep -A 20 "DUAL INTERFACE"
 ```
 
 

@@ -51,6 +51,16 @@ class Wifite(object):
 
         # Automatic cleanup of old session files on startup
         self.cleanup_old_sessions()
+        
+        # Initialize interface assignment storage
+        self.interface_assignment = None
+        self.available_interfaces = []
+        
+        # Initialize interface manager for state tracking and cleanup (Task 10.4)
+        from .util.interface_manager import InterfaceManager
+        self.interface_manager = InterfaceManager()
+        # Store in Configuration for cleanup access
+        Configuration.interface_manager = self.interface_manager
 
     def start(self):
         """
@@ -115,6 +125,413 @@ class Wifite(object):
         except Exception:
             # Silently ignore cleanup errors on startup
             pass
+
+    def detect_and_assign_interfaces(self, attack_type='wpa'):
+        """
+        Detect available interfaces and assign them for the specified attack type.
+        
+        Args:
+            attack_type: Type of attack ('evil_twin', 'wpa', 'wps')
+            
+        Returns:
+            InterfaceAssignment or None if assignment fails
+        """
+        from .util.interface_manager import InterfaceManager
+        from .util.interface_assignment import InterfaceAssignmentStrategy
+        from .util.logger import log_info, log_warning, log_error
+        
+        try:
+            # Detect available interfaces
+            log_info('Wifite', 'Detecting available wireless interfaces...')
+            self.available_interfaces = InterfaceManager.get_available_interfaces()
+            
+            if not self.available_interfaces:
+                log_warning('Wifite', 'No wireless interfaces detected')
+                return None
+            
+            log_info('Wifite', f'Found {len(self.available_interfaces)} wireless interface(s)')
+            
+            # Determine if dual interface mode should be used
+            use_dual_interface = self._should_use_dual_interface()
+            
+            if not use_dual_interface:
+                log_info('Wifite', 'Dual interface mode disabled, using single interface')
+                return None
+            
+            # Validate and prepare interfaces for dual interface mode ONCE at startup
+            if not self._validate_and_prepare_dual_interfaces():
+                log_warning('Wifite', 'Dual interface validation failed, falling back to single interface')
+                self.fallback_to_single_interface()
+                return None
+            
+            # Get interface assignment based on attack type
+            assignment = None
+            if attack_type == 'evil_twin':
+                assignment = InterfaceAssignmentStrategy.assign_for_evil_twin(self.available_interfaces)
+            elif attack_type == 'wpa':
+                assignment = InterfaceAssignmentStrategy.assign_for_wpa(self.available_interfaces)
+            elif attack_type == 'wps':
+                assignment = InterfaceAssignmentStrategy.assign_for_wps(self.available_interfaces)
+            else:
+                # Default to WPA assignment
+                assignment = InterfaceAssignmentStrategy.assign_for_wpa(self.available_interfaces)
+            
+            if assignment:
+                log_info('Wifite', f'Interface assignment: {assignment.get_assignment_summary()}')
+                self.interface_assignment = assignment
+                # Display interface assignment to user
+                self.display_interface_assignment()
+            else:
+                log_warning('Wifite', f'Could not assign interfaces for {attack_type} attack')
+                # Attempt fallback to single interface mode
+                self.fallback_to_single_interface()
+            
+            return assignment
+            
+        except Exception as e:
+            log_error('Wifite', f'Error during interface detection/assignment: {e}')
+            if Configuration.verbose > 0:
+                import traceback
+                log_error('Wifite', traceback.format_exc())
+            # Attempt fallback on error
+            self.fallback_to_single_interface()
+            return None
+    
+    def _validate_and_prepare_dual_interfaces(self):
+        """
+        Validate that interfaces can enter monitor mode and prepare them for dual interface attacks.
+        This is done ONCE at startup to avoid repeated testing for each target.
+        
+        Returns:
+            bool: True if interfaces are ready for dual interface mode
+        """
+        from .util.interface_manager import InterfaceManager
+        from .util.color import Color
+        from .util.logger import log_info, log_warning
+        
+        # Need at least 2 interfaces for dual mode
+        if len(self.available_interfaces) < 2:
+            return False
+        
+        Color.pl('{+} {C}Validating interfaces for dual interface mode...{W}')
+        
+        # Test monitor mode capability on all interfaces
+        valid_interfaces = []
+        for iface_info in self.available_interfaces:
+            iface_name = iface_info.name
+            
+            # Check if interface supports monitor mode
+            if not InterfaceManager.check_monitor_mode_support(iface_name):
+                Color.pl('{!} {O}Interface {R}%s{O} does not support monitor mode{W}' % iface_name)
+                continue
+            
+            # In verbose mode, actually test monitor mode
+            if Configuration.verbose > 0:
+                Color.pl('{+} {C}Testing monitor mode on {G}%s{W}...' % iface_name)
+                if not InterfaceManager.test_monitor_mode(iface_name):
+                    Color.pl('{!} {R}Monitor mode test failed on {O}%s{W}' % iface_name)
+                    continue
+                Color.pl('{+} {G}Monitor mode test passed on {G}%s{W}' % iface_name)
+            
+            valid_interfaces.append(iface_info)
+        
+        # Update available interfaces to only include valid ones
+        self.available_interfaces = valid_interfaces
+        
+        if len(valid_interfaces) < 2:
+            Color.pl('{!} {R}Not enough monitor-capable interfaces for dual interface mode{W}')
+            Color.pl('{!} {O}Need 2 interfaces, found %d{W}' % len(valid_interfaces))
+            return False
+        
+        Color.pl('{+} {G}Found %d monitor-capable interface(s) for dual interface mode{W}' % len(valid_interfaces))
+        log_info('Wifite', f'Validated {len(valid_interfaces)} interfaces for dual interface mode')
+        
+        return True
+    
+    def _should_use_dual_interface(self):
+        """
+        Determine if dual interface mode should be used based on configuration and available interfaces.
+        
+        Returns:
+            bool: True if dual interface mode should be used
+        """
+        # Check if explicitly disabled
+        if Configuration.dual_interface_enabled is False:
+            return False
+        
+        # Check if explicitly enabled
+        if Configuration.dual_interface_enabled is True:
+            return True
+        
+        # Check if manual interfaces specified
+        if Configuration.interface_primary or Configuration.interface_secondary:
+            return True
+        
+        # Check if we have enough interfaces and prefer dual mode
+        if len(self.available_interfaces) >= 2 and Configuration.prefer_dual_interface:
+            return True
+        
+        return False
+    
+    def fallback_to_single_interface(self):
+        """
+        Fallback to single interface mode when dual interface assignment fails.
+        Selects the best available interface and configures single interface mode.
+        """
+        from .util.logger import log_info, log_warning
+        
+        Color.pl('')
+        Color.pl('{!} {O}Dual interface assignment failed{W}')
+        Color.pl('{+} {C}Falling back to single interface mode...{W}')
+        
+        # Clear any existing assignment
+        self.interface_assignment = None
+        
+        # Select best single interface
+        best_interface = self._select_best_single_interface()
+        
+        if not best_interface:
+            Color.pl('{!} {R}No suitable interface found for single interface mode{W}')
+            log_warning('Wifite', 'No suitable interface found for fallback')
+            return
+        
+        # Set the interface in Configuration
+        Configuration.interface = best_interface.name
+        
+        Color.pl('{+} {C}Selected interface:{W} {G}%s{W}' % best_interface.name)
+        Color.pl('{+} {C}Mode:{W} {O}Single Interface{W} (mode switching will be used)')
+        
+        if best_interface.driver:
+            Color.pl('{+} {C}Driver:{W} %s' % best_interface.driver)
+        
+        Color.pl('{+} {C}Capabilities:{W} %s' % best_interface.get_capability_summary())
+        Color.pl('')
+        
+        log_info('Wifite', f'Fallback to single interface mode using {best_interface.name}')
+    
+    def _select_best_single_interface(self):
+        """
+        Select the best single interface from available interfaces.
+        Prioritizes interfaces with the most capabilities.
+        
+        Returns:
+            InterfaceInfo object or None if no suitable interface found
+        """
+        if not self.available_interfaces:
+            return None
+        
+        # Score each interface based on capabilities
+        scored_interfaces = []
+        for iface in self.available_interfaces:
+            score = 0
+            
+            # Prefer interfaces that are down (easier to configure)
+            if not iface.is_up:
+                score += 10
+            
+            # Prefer interfaces with monitor mode support
+            if iface.supports_monitor_mode:
+                score += 5
+            
+            # Prefer interfaces with AP mode support
+            if iface.supports_ap_mode:
+                score += 5
+            
+            # Prefer interfaces with injection support
+            if iface.supports_injection:
+                score += 3
+            
+            # Prefer interfaces that are not connected
+            if not iface.is_connected:
+                score += 2
+            
+            scored_interfaces.append((score, iface))
+        
+        # Sort by score (highest first)
+        scored_interfaces.sort(key=lambda x: x[0], reverse=True)
+        
+        # Return the best interface
+        return scored_interfaces[0][1] if scored_interfaces else None
+    
+    def display_interface_assignment(self):
+        """
+        Display the current interface assignment to the user.
+        Shows primary and secondary interfaces with their roles and capabilities.
+        """
+        if not self.interface_assignment:
+            # Single interface mode
+            if Configuration.interface:
+                Color.pl('')
+                Color.pl('{+} {C}Interface Mode:{W} {O}Single Interface{W}')
+                Color.pl('{+} {C}Interface:{W} {G}%s{W}' % Configuration.interface)
+                
+                # Try to find interface info for capabilities
+                interface_info = self._get_interface_info_by_name(Configuration.interface)
+                if interface_info:
+                    Color.pl('{+} {C}Capabilities:{W} %s' % interface_info.get_capability_summary())
+            return
+        
+        # Dual interface mode
+        Color.pl('')
+        Color.pl('{+} {C}Interface Mode:{W} {G}Dual Interface{W}')
+        Color.pl('{+} {C}Attack Type:{W} {G}%s{W}' % self.interface_assignment.attack_type.upper())
+        
+        # Display primary interface
+        Color.pl('')
+        Color.pl('{+} {C}Primary Interface:{W} {G}%s{W}' % self.interface_assignment.primary)
+        Color.pl('{+} {C}Role:{W} %s' % self.interface_assignment.primary_role)
+        
+        primary_info = self._get_interface_info_by_name(self.interface_assignment.primary)
+        if primary_info:
+            Color.pl('{+} {C}Capabilities:{W} %s' % primary_info.get_capability_summary())
+            Color.pl('{+} {C}Status:{W} %s' % primary_info.get_status_summary())
+        
+        # Display secondary interface if present
+        if self.interface_assignment.secondary:
+            Color.pl('')
+            Color.pl('{+} {C}Secondary Interface:{W} {G}%s{W}' % self.interface_assignment.secondary)
+            Color.pl('{+} {C}Role:{W} %s' % self.interface_assignment.secondary_role)
+            
+            secondary_info = self._get_interface_info_by_name(self.interface_assignment.secondary)
+            if secondary_info:
+                Color.pl('{+} {C}Capabilities:{W} %s' % secondary_info.get_capability_summary())
+                Color.pl('{+} {C}Status:{W} %s' % secondary_info.get_status_summary())
+        
+        Color.pl('')
+    
+    def _get_interface_info_by_name(self, interface_name):
+        """
+        Get InterfaceInfo object for a given interface name.
+        
+        Args:
+            interface_name: Name of the interface
+            
+        Returns:
+            InterfaceInfo object or None if not found
+        """
+        for iface in self.available_interfaces:
+            if iface.name == interface_name:
+                return iface
+        return None
+    
+    def validate_interface_assignment(self):
+        """
+        Validate the current interface assignment before attack execution.
+        Checks that interfaces exist, have required capabilities, and displays warnings.
+        
+        Returns:
+            tuple: (is_valid, error_message, warnings)
+        """
+        from .util.interface_assignment import InterfaceAssignmentStrategy
+        from .util.logger import log_warning, log_error
+        
+        warnings = []
+        
+        # If no assignment, validate single interface mode
+        if not self.interface_assignment:
+            if not Configuration.interface:
+                return False, 'No interface configured', []
+            
+            # Check if interface exists
+            interface_info = self._get_interface_info_by_name(Configuration.interface)
+            if not interface_info:
+                return False, f'Interface {Configuration.interface} not found', []
+            
+            return True, None, warnings
+        
+        # Validate dual interface assignment
+        assignment = self.interface_assignment
+        
+        # Check that primary interface exists
+        primary_info = self._get_interface_info_by_name(assignment.primary)
+        if not primary_info:
+            return False, f'Primary interface {assignment.primary} not found', warnings
+        
+        # Check that secondary interface exists (if specified)
+        if assignment.secondary:
+            secondary_info = self._get_interface_info_by_name(assignment.secondary)
+            if not secondary_info:
+                return False, f'Secondary interface {assignment.secondary} not found', warnings
+            
+            # Validate dual interface setup
+            is_valid, error_msg = InterfaceAssignmentStrategy.validate_dual_interface_setup(
+                primary_info, secondary_info
+            )
+            
+            if not is_valid:
+                return False, error_msg, warnings
+            
+            # Check if interfaces are on the same physical device (warning only)
+            if primary_info.phy == secondary_info.phy:
+                warning = f'Primary and secondary interfaces share the same physical device ({primary_info.phy}). This may cause conflicts.'
+                warnings.append(warning)
+                log_warning('Wifite', warning)
+        
+        # Validate capabilities based on attack type
+        attack_type = assignment.attack_type
+        
+        if attack_type == 'evil_twin':
+            # Primary should support AP mode
+            if not primary_info.supports_ap_mode:
+                warning = f'Primary interface {assignment.primary} may not support AP mode. Evil Twin attack may fail.'
+                warnings.append(warning)
+                log_warning('Wifite', warning)
+            
+            # Secondary should support monitor mode (if present)
+            if assignment.secondary and secondary_info:
+                if not secondary_info.supports_monitor_mode:
+                    warning = f'Secondary interface {assignment.secondary} may not support monitor mode.'
+                    warnings.append(warning)
+                    log_warning('Wifite', warning)
+        
+        elif attack_type == 'wpa':
+            # Both interfaces should support monitor mode
+            if not primary_info.supports_monitor_mode:
+                warning = f'Primary interface {assignment.primary} may not support monitor mode. WPA attack may fail.'
+                warnings.append(warning)
+                log_warning('Wifite', warning)
+            
+            if assignment.secondary and secondary_info:
+                if not secondary_info.supports_monitor_mode:
+                    warning = f'Secondary interface {assignment.secondary} may not support monitor mode.'
+                    warnings.append(warning)
+                    log_warning('Wifite', warning)
+        
+        # Check injection support
+        if not primary_info.supports_injection:
+            warning = f'Primary interface {assignment.primary} may not support packet injection.'
+            warnings.append(warning)
+            log_warning('Wifite', warning)
+        
+        if assignment.secondary and secondary_info and not secondary_info.supports_injection:
+            warning = f'Secondary interface {assignment.secondary} may not support packet injection.'
+            warnings.append(warning)
+            log_warning('Wifite', warning)
+        
+        return True, None, warnings
+    
+    def display_validation_results(self, is_valid, error_message, warnings):
+        """
+        Display validation results to the user.
+        
+        Args:
+            is_valid: Whether validation passed
+            error_message: Error message if validation failed
+            warnings: List of warning messages
+        """
+        if not is_valid:
+            Color.pl('')
+            Color.pl('{!} {R}Interface Validation Failed:{W}')
+            Color.pl('{!} {R}%s{W}' % error_message)
+            Color.pl('')
+            return
+        
+        if warnings:
+            Color.pl('')
+            Color.pl('{!} {O}Interface Warnings:{W}')
+            for warning in warnings:
+                Color.pl('{!} {O}• %s{W}' % warning)
+            Color.pl('')
 
     @staticmethod
     def clean_sessions():
@@ -490,8 +907,7 @@ class Wifite(object):
         Color.pl(r' {G}  `     {GR}{D}/¯¯¯\{W}{G}     ´    {C}{D}https://github.com/kimocoder/wifite2{W}')
         Color.pl('')
 
-    @staticmethod
-    def dragonblood_scan():
+    def dragonblood_scan(self):
         """
         Scan for Dragonblood vulnerabilities in WPA3 networks.
         Detection only - no attacks performed.
@@ -529,8 +945,7 @@ class Wifite(object):
 
         Color.pl('')
 
-    @staticmethod
-    def owe_scan():
+    def owe_scan(self):
         """
         Scan for OWE transition mode vulnerabilities.
         Detection only - no attacks performed.
@@ -568,8 +983,7 @@ class Wifite(object):
 
         Color.pl('')
 
-    @staticmethod
-    def scan_and_attack():
+    def scan_and_attack(self):
         """
         1) Scans for targets, asks user to select targets
         2) Attacks each target
@@ -579,6 +993,18 @@ class Wifite(object):
         from .util.session import SessionManager
 
         Color.pl('')
+
+        # Detect and assign interfaces before scanning
+        # Default to WPA attack type for general scanning
+        self.detect_and_assign_interfaces(attack_type='wpa')
+
+        # Validate interface assignment
+        is_valid, error_message, warnings = self.validate_interface_assignment()
+        self.display_validation_results(is_valid, error_message, warnings)
+        
+        if not is_valid:
+            Color.pl('{!} {R}Cannot proceed with invalid interface configuration{W}')
+            Configuration.exit_gracefully()
 
         # Scan (no signal handler during scanning to allow proper target selection)
         s = Scanner()
@@ -687,6 +1113,28 @@ def main():
         except Exception as e:
             from .util.logger import log_debug
             log_debug('Wifite', f'Cleanup thread error: {e}')
+        
+        # Clean up managed interfaces (Task 10.4)
+        try:
+            from .util.logger import log_debug
+            
+            if hasattr(Configuration, 'interface_manager') and Configuration.interface_manager is not None:
+                log_debug('Wifite', 'Cleaning up managed interfaces')
+                
+                def interface_cleanup():
+                    try:
+                        Configuration.interface_manager.cleanup_all()
+                    except Exception as e:
+                        log_debug('Wifite', f'Interface cleanup error: {e}')
+                
+                import threading
+                cleanup_thread = threading.Thread(target=interface_cleanup)
+                cleanup_thread.daemon = True
+                cleanup_thread.start()
+                cleanup_thread.join(timeout=2)  # 2 second timeout
+        except Exception as e:
+            from .util.logger import log_debug
+            log_debug('Wifite', f'Interface cleanup thread error: {e}')
 
         # Delete Reaver .pcap quickly
         try:

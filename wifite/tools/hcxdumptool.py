@@ -30,7 +30,7 @@ class HcxDumpTool(Dependency):
         Initialize hcxdumptool wrapper.
 
         Args:
-            interface: Wireless interface in monitor mode
+            interface: Wireless interface(s) in monitor mode (string or list)
             channel: Channel to monitor (optional)
             target_bssid: Target BSSID to filter (optional)
             output_file: Output pcapng file path
@@ -43,7 +43,21 @@ class HcxDumpTool(Dependency):
             interface = Configuration.interface
         if interface is None:
             raise Exception('Wireless interface must be defined (-i)')
-        self.interface = interface
+        
+        # Accept both string and list of interfaces
+        if isinstance(interface, str):
+            self.interfaces = [interface]
+        elif isinstance(interface, list):
+            self.interfaces = interface
+        else:
+            raise ValueError('Interface must be a string or list of strings')
+        
+        # Validate interface list is not empty
+        if not self.interfaces:
+            raise ValueError('Interface list cannot be empty')
+        
+        # Keep backward compatibility with single interface attribute
+        self.interface = self.interfaces[0]
 
         self.channel = channel
         self.target_bssid = target_bssid
@@ -68,14 +82,19 @@ class HcxDumpTool(Dependency):
         - Uses efficient BPF filters to reduce CPU usage
         - Filters for authentication frames only (SAE uses auth frames)
         - Reduces memory usage by filtering early in capture pipeline
+        - Supports multiple interfaces for simultaneous monitoring
         """
         # Build the command
         command = [
             'hcxdumptool',
-            '-i', self.interface,
             '-o', self.output_file,
             '--enable_status=15'  # Enable all status messages
         ]
+        
+        # Add all interfaces with -i flag
+        # hcxdumptool supports multiple -i flags for multi-interface capture
+        for iface in self.interfaces:
+            command.extend(['-i', iface])
 
         # Add channel if specified
         if self.channel:

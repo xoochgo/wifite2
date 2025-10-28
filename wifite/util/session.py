@@ -302,7 +302,13 @@ class SessionManager:
                 'use_tui': getattr(config, 'use_tui', True),
                 'wps_only': getattr(config, 'wps_only', False),
                 'use_pmkid_only': getattr(config, 'use_pmkid_only', False),
-                'verbose': getattr(config, 'verbose', 0)
+                'verbose': getattr(config, 'verbose', 0),
+                # Dual interface configuration
+                'dual_interface_enabled': getattr(config, 'dual_interface_enabled', False),
+                'interface_primary': getattr(config, 'interface_primary', None),
+                'interface_secondary': getattr(config, 'interface_secondary', None),
+                'auto_assign_interfaces': getattr(config, 'auto_assign_interfaces', True),
+                'prefer_dual_interface': getattr(config, 'prefer_dual_interface', True)
             }
         
         session = SessionState(
@@ -897,6 +903,90 @@ class SessionManager:
         saved_verbose = saved_config.get('verbose')
         if saved_verbose is not None:
             config_obj.verbose = saved_verbose
+        
+        # Dual interface configuration
+        saved_dual_enabled = saved_config.get('dual_interface_enabled')
+        if saved_dual_enabled is not None:
+            current_dual_enabled = getattr(config_obj, 'dual_interface_enabled', False)
+            if current_dual_enabled != saved_dual_enabled:
+                conflicts.append(
+                    f"--dual-interface: command-line value overridden by session value"
+                )
+            config_obj.dual_interface_enabled = saved_dual_enabled
+        
+        # Primary interface
+        saved_primary = saved_config.get('interface_primary')
+        if saved_primary:
+            # Check if saved primary interface is available
+            try:
+                import subprocess
+                result = subprocess.run(
+                    ['iw', 'dev'],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                available_interfaces = result.stdout
+                
+                if saved_primary not in available_interfaces:
+                    warnings.append(
+                        f"Saved primary interface '{saved_primary}' not found, will auto-assign"
+                    )
+                    config_obj.interface_primary = None
+                else:
+                    current_primary = getattr(config_obj, 'interface_primary', None)
+                    if current_primary and current_primary != saved_primary:
+                        conflicts.append(
+                            f"--interface-primary: command-line value overridden by session value"
+                        )
+                    config_obj.interface_primary = saved_primary
+            except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+                warnings.append(
+                    "Could not verify primary interface availability, will auto-assign"
+                )
+                config_obj.interface_primary = None
+        
+        # Secondary interface
+        saved_secondary = saved_config.get('interface_secondary')
+        if saved_secondary:
+            # Check if saved secondary interface is available
+            try:
+                import subprocess
+                result = subprocess.run(
+                    ['iw', 'dev'],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                available_interfaces = result.stdout
+                
+                if saved_secondary not in available_interfaces:
+                    warnings.append(
+                        f"Saved secondary interface '{saved_secondary}' not found, will auto-assign"
+                    )
+                    config_obj.interface_secondary = None
+                else:
+                    current_secondary = getattr(config_obj, 'interface_secondary', None)
+                    if current_secondary and current_secondary != saved_secondary:
+                        conflicts.append(
+                            f"--interface-secondary: command-line value overridden by session value"
+                        )
+                    config_obj.interface_secondary = saved_secondary
+            except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+                warnings.append(
+                    "Could not verify secondary interface availability, will auto-assign"
+                )
+                config_obj.interface_secondary = None
+        
+        # Auto-assign interfaces
+        saved_auto_assign = saved_config.get('auto_assign_interfaces')
+        if saved_auto_assign is not None:
+            config_obj.auto_assign_interfaces = saved_auto_assign
+        
+        # Prefer dual interface
+        saved_prefer_dual = saved_config.get('prefer_dual_interface')
+        if saved_prefer_dual is not None:
+            config_obj.prefer_dual_interface = saved_prefer_dual
         
         return {
             'warnings': warnings,

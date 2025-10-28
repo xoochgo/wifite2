@@ -61,7 +61,7 @@ class Hostapd(Dependency):
         """
         try:
             # Use iw to check supported modes
-            output = Process(['iw', interface, 'info']).stdout()
+            output = Process(['iw', 'dev', interface, 'info']).stdout()
 
             # Check for AP mode in capabilities
             if 'AP' in output or 'master' in output:

@@ -371,8 +371,21 @@ class Aireplay(Thread, Dependency):
         return None
 
     @staticmethod
-    def deauth(target_bssid, essid=None, client_mac=None, num_deauths=None, timeout=2):
+    def deauth(target_bssid, essid=None, client_mac=None, num_deauths=None, timeout=2, interface=None):
+        """
+        Send deauthentication packets to a target.
+        
+        Args:
+            target_bssid: BSSID of the target AP
+            essid: ESSID of the target (optional)
+            client_mac: Specific client to deauth (None = broadcast)
+            num_deauths: Number of deauth packets to send
+            timeout: Timeout in seconds
+            interface: Wireless interface to use (None = use Configuration.interface)
+        """
         num_deauths = num_deauths or Configuration.num_deauths
+        interface = interface or Configuration.interface
+        
         deauth_cmd = [
             'aireplay-ng',
             '-0',  # Deauthentication
@@ -386,7 +399,7 @@ class Aireplay(Thread, Dependency):
             deauth_cmd.extend(['-c', client_mac])
         if essid:
             deauth_cmd.extend(['-e', essid])
-        deauth_cmd.append(Configuration.interface)
+        deauth_cmd.append(interface)
         proc = Process(deauth_cmd)
         while proc.poll() is None:
             if proc.running_time() >= timeout:

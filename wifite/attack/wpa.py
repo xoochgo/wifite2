@@ -25,6 +25,11 @@ class AttackWPA(Attack):
         self.crack_result = None
         self.success = False
         
+        # Interface assignment for dual interface support
+        self.interface_assignment = None
+        self.capture_interface = None  # Dedicated interface for handshake capture
+        self.deauth_interface = None   # Dedicated interface for deauthentication
+        
         # Initialize TUI view if in TUI mode
         self.view = None
         if OutputManager.is_tui_mode():
@@ -34,6 +39,87 @@ class AttackWPA(Attack):
             except Exception:
                 # If TUI initialization fails, continue without it
                 self.view = None
+
+    def _get_interface_assignment(self):
+        """
+        Get interface assignment for WPA attack.
+        
+        Retrieves interface assignment from wifite instance or configuration,
+        validates it for WPA attack requirements, and returns the assignment.
+        
+        Returns:
+            InterfaceAssignment object or None if not available/invalid
+        """
+        from ..util.interface_assignment import InterfaceAssignmentStrategy
+        from ..util.interface_manager import InterfaceManager
+        from ..model.interface_info import InterfaceAssignment
+        
+        try:
+            # Check if manual interfaces are specified in configuration
+            if Configuration.interface_primary and Configuration.interface_secondary:
+                Color.pl('{+} {C}Using manually specified interfaces{W}')
+                
+                # Get interface info for validation
+                available_interfaces = InterfaceManager.get_available_interfaces()
+                primary_info = next((iface for iface in available_interfaces 
+                                   if iface.name == Configuration.interface_primary), None)
+                secondary_info = next((iface for iface in available_interfaces 
+                                     if iface.name == Configuration.interface_secondary), None)
+                
+                if not primary_info:
+                    Color.pl('{!} {R}Primary interface %s not found{W}' % Configuration.interface_primary)
+                    return None
+                
+                if not secondary_info:
+                    Color.pl('{!} {R}Secondary interface %s not found{W}' % Configuration.interface_secondary)
+                    return None
+                
+                # Validate the manual assignment
+                is_valid, error_msg = InterfaceAssignmentStrategy.validate_dual_interface_setup(
+                    primary_info, secondary_info
+                )
+                
+                if not is_valid:
+                    Color.pl('{!} {R}Manual interface assignment invalid: %s{W}' % error_msg)
+                    return None
+                
+                # Create assignment from manual configuration
+                assignment = InterfaceAssignment(
+                    attack_type='wpa',
+                    primary=Configuration.interface_primary,
+                    secondary=Configuration.interface_secondary,
+                    primary_role='Handshake capture (airodump-ng)',
+                    secondary_role='Deauthentication (aireplay-ng)'
+                )
+                
+                Color.pl('{+} {G}Manual assignment validated: %s{W}' % assignment.get_assignment_summary())
+                return assignment
+            
+            # Check if assignment is already available (from wifite instance)
+            if self.interface_assignment:
+                return self.interface_assignment
+            
+            # Try automatic assignment if dual interface mode is enabled
+            if Configuration.dual_interface_enabled:
+                Color.pl('{+} {C}Attempting automatic interface assignment for WPA attack{W}')
+                
+                available_interfaces = InterfaceManager.get_available_interfaces()
+                assignment = InterfaceAssignmentStrategy.assign_for_wpa(available_interfaces)
+                
+                if assignment and assignment.is_dual_interface():
+                    Color.pl('{+} {G}Dual interface assignment: %s{W}' % assignment.get_assignment_summary())
+                    return assignment
+                elif assignment:
+                    Color.pl('{+} {O}Single interface mode: %s{W}' % assignment.get_assignment_summary())
+                    return assignment
+                else:
+                    Color.pl('{!} {O}Could not assign interfaces, using default single interface{W}')
+            
+            return None
+            
+        except Exception as e:
+            Color.pl('{!} {R}Error getting interface assignment: %s{W}' % str(e))
+            return None
 
     def run(self):
         """Initiates full WPA handshake capture attack."""
@@ -55,8 +141,19 @@ class AttackWPA(Attack):
             self.success = False
             return False
 
+        # Get interface assignment for dual interface support
+        self.interface_assignment = self._get_interface_assignment()
+        
         # Capture the handshake (or use an old one)
-        handshake = self.capture_handshake()
+        # Use dual interface mode if available, otherwise use single interface
+        if self.interface_assignment and self.interface_assignment.is_dual_interface():
+            Color.pl('{+} {G}Using dual interface mode for WPA attack{W}')
+            handshake = self._run_dual_interface()
+        else:
+            # Single interface mode (existing implementation)
+            if self.interface_assignment:
+                Color.pl('{+} {O}Using single interface mode{W}')
+            handshake = self.capture_handshake()
 
         if handshake is None:
             # Failed to capture handshake
@@ -154,6 +251,537 @@ class AttackWPA(Attack):
         Color.pl(arg0)
         self.success = False
         return False
+
+    def _run_dual_interface(self):
+        """
+        Run WPA attack with two interfaces (continuous capture, parallel deauth).
+        
+        This method implements the dual interface attack flow:
+        1. Configure both interfaces in monitor mode
+        2. Start continuous capture on primary interface
+        3. Send deauth from secondary interface (non-blocking)
+        4. Wait for handshake without interrupting capture
+        
+        Returns:
+            Handshake object if captured, None otherwise
+        """
+        from ..tools.airmon import Airmon
+        from ..tools.hcxdumptool import HcxDumpTool
+        
+        # Check if hcxdump mode is requested
+        use_hcxdump_mode = False
+        if Configuration.use_hcxdump:
+            # Check if hcxdumptool is available
+            if not HcxDumpTool.exists():
+                Color.pl('{!} {O}hcxdumptool not found{W}')
+                Color.pl('{!} {O}Install from: {C}%s{W}' % HcxDumpTool.dependency_url)
+                Color.pl('{!} {O}Falling back to airodump-ng mode{W}')
+            else:
+                # Check minimum version requirement (6.2.0+)
+                if not HcxDumpTool.check_minimum_version('6.2.0'):
+                    current_version = HcxDumpTool.check_version()
+                    Color.pl('{!} {O}hcxdumptool version {R}%s{O} is insufficient{W}' % (current_version or 'unknown'))
+                    Color.pl('{!} {O}Minimum required version: {G}6.2.0{W}')
+                    Color.pl('{!} {O}Falling back to airodump-ng mode{W}')
+                else:
+                    # All checks passed, use hcxdump mode
+                    use_hcxdump_mode = True
+                    Color.pl('{+} {G}Using hcxdumptool for dual interface capture{W}')
+                    if self.view:
+                        self.view.add_log('Using hcxdumptool mode for capture')
+        
+        try:
+            # Extract interfaces from assignment
+            self.capture_interface = self.interface_assignment.primary
+            self.deauth_interface = self.interface_assignment.secondary
+            
+            Color.pl('\n{+} {C}Running WPA attack in dual interface mode{W}')
+            Color.pl('{+} {C}Capture interface: {G}%s{W}' % self.capture_interface)
+            Color.pl('{+} {C}Deauth interface: {G}%s{W}' % self.deauth_interface)
+            
+            if self.view:
+                self.view.add_log(f"Dual interface mode: Capture={self.capture_interface}, Deauth={self.deauth_interface}")
+            
+            # Put both interfaces in monitor mode (validation already done at startup)
+            Color.pl('{+} {C}Enabling monitor mode on capture interface {G}%s{W}...' % self.capture_interface)
+            capture_monitor = Airmon.start(self.capture_interface)
+            if not capture_monitor:
+                Color.pl('{!} {R}Failed to enable monitor mode on capture interface{W}')
+                return None
+            
+            Color.pl('{+} {C}Enabling monitor mode on deauth interface {G}%s{W}...' % self.deauth_interface)
+            deauth_monitor = Airmon.start(self.deauth_interface)
+            if not deauth_monitor:
+                Color.pl('{!} {R}Failed to enable monitor mode on deauth interface{W}')
+                # Try to stop the capture monitor interface
+                Airmon.stop(capture_monitor)
+                return None
+            
+            # Update interface names to monitor mode names
+            self.capture_interface = capture_monitor
+            self.deauth_interface = deauth_monitor
+            
+            Color.pl('{+} {G}Monitor mode enabled on both interfaces{W}')
+            Color.pl('{+} {C}Capture: {G}%s{W}, Deauth: {G}%s{W}' % (self.capture_interface, self.deauth_interface))
+            
+            if self.view:
+                self.view.add_log(f"Monitor mode enabled: {self.capture_interface}, {self.deauth_interface}")
+            
+            # Route to appropriate capture method based on configuration
+            if use_hcxdump_mode:
+                Color.pl('{+} {C}Using hcxdumptool capture method{W}')
+                if self.view:
+                    self.view.add_log('Capture method: hcxdumptool')
+                handshake = self._capture_handshake_dual_hcxdump()
+            else:
+                Color.pl('{+} {C}Using airodump-ng capture method{W}')
+                if self.view:
+                    self.view.add_log('Capture method: airodump-ng')
+                handshake = self._capture_handshake_dual_airodump()
+            
+            # Stop monitor mode on both interfaces
+            Color.pl('\n{+} {C}Stopping monitor mode...{W}')
+            Airmon.stop(self.capture_interface)
+            Airmon.stop(self.deauth_interface)
+            
+            return handshake
+            
+        except Exception as e:
+            Color.pl('{!} {R}Error in dual interface WPA attack: %s{W}' % str(e))
+            if self.view:
+                self.view.add_log(f"Error: {str(e)}")
+            
+            # Try to cleanup interfaces
+            try:
+                if self.capture_interface:
+                    Airmon.stop(self.capture_interface)
+                if self.deauth_interface:
+                    Airmon.stop(self.deauth_interface)
+            except:
+                pass
+            
+            return None
+
+    def _capture_handshake_dual_airodump(self):
+        """
+        Capture handshake using dual interface mode with airodump-ng.
+        
+        Uses dedicated capture interface for continuous packet capture
+        and dedicated deauth interface for sending deauth packets without
+        interrupting the capture.
+        
+        Returns:
+            Handshake object if captured, None otherwise
+        """
+        handshake = None
+        
+        # Start Airodump on capture interface
+        with Airodump(channel=self.target.channel,
+                      target_bssid=self.target.bssid,
+                      skip_wps=True,
+                      output_file_prefix='wpa',
+                      interface=self.capture_interface) as airodump:
+            
+            Color.clear_entire_line()
+            Color.pattack('WPA', self.target, 'Handshake capture', 'Waiting for target to appear...')
+            
+            try:
+                airodump_target = self.wait_for_target(airodump)
+            except Exception as e:
+                Color.pl('\n{!} {R}Target timeout:{W} %s' % str(e))
+                return None
+            
+            self.clients = []
+            
+            # Try to load existing handshake
+            if not Configuration.ignore_old_handshakes:
+                bssid = airodump_target.bssid
+                essid = airodump_target.essid if airodump_target.essid_known else None
+                handshake = self.load_handshake(bssid=bssid, essid=essid)
+                if handshake:
+                    Color.pattack('WPA', self.target, 'Handshake capture',
+                                  'found {G}existing handshake{W} for {C}%s{W}' % handshake.essid)
+                    Color.pl('\n{+} Using handshake from {C}%s{W}' % handshake.capfile)
+                    return handshake
+            
+            timeout_timer = Timer(Configuration.wpa_attack_timeout)
+            deauth_timer = Timer(Configuration.wpa_deauth_timeout)
+            
+            while handshake is None and not timeout_timer.ended():
+                step_timer = Timer(1)
+                
+                # Update TUI view if available
+                if self.view:
+                    self.view.refresh_if_needed()
+                    self.view.update_progress({
+                        'status': f'Listening for handshake (clients: {len(self.clients)}) [DUAL]',
+                        'metrics': {
+                            'Clients': len(self.clients),
+                            'Deauth Timer': str(deauth_timer),
+                            'Timeout': str(timeout_timer),
+                            'Mode': 'Dual Interface'
+                        }
+                    })
+                
+                Color.clear_entire_line()
+                Color.pattack('WPA',
+                              airodump_target,
+                              'Handshake capture',
+                              'Listening [DUAL]. (clients:{G}%d{W}, deauth:{O}%s{W}, timeout:{R}%s{W})' % (
+                                  len(self.clients), deauth_timer, timeout_timer))
+                
+                # Find .cap file
+                cap_files = airodump.find_files(endswith='.cap')
+                if len(cap_files) == 0:
+                    # No cap files yet
+                    time.sleep(step_timer.remaining())
+                    continue
+                cap_file = cap_files[0]
+                
+                # Copy .cap file to temp for consistency
+                temp_file = Configuration.temp('handshake.cap.bak')
+                
+                # Check file size before copying
+                try:
+                    file_size = os.path.getsize(cap_file)
+                    max_cap_size = 50 * 1024 * 1024  # 50MB limit
+                    if file_size > max_cap_size:
+                        Color.pl('\n{!} {O}Warning: Capture file is large (%d MB), may cause memory issues{W}' % (file_size // (1024*1024)))
+                except (OSError, IOError):
+                    pass
+                
+                copy(cap_file, temp_file)
+                
+                # Check cap file for handshake
+                bssid = airodump_target.bssid
+                essid = airodump_target.essid if airodump_target.essid_known else None
+                handshake = Handshake(temp_file, bssid=bssid, essid=essid)
+                if handshake.has_handshake():
+                    # We got a handshake
+                    Color.clear_entire_line()
+                    Color.pattack('WPA',
+                                  airodump_target,
+                                  'Handshake capture',
+                                  '{G}Captured handshake{W} [DUAL]')
+                    Color.pl('')
+                    
+                    # Update TUI view
+                    if self.view:
+                        self.view.add_log('Captured handshake!')
+                        self.view.update_progress({
+                            'status': 'Handshake captured successfully',
+                            'progress': 1.0,
+                            'metrics': {
+                                'Handshake': '✓',
+                                'Clients': len(self.clients),
+                                'Mode': 'Dual Interface'
+                            }
+                        })
+                    
+                    break
+                
+                # No handshake yet
+                handshake = None
+                os.remove(temp_file)
+                
+                # Look for new clients
+                try:
+                    airodump_target = self.wait_for_target(airodump)
+                except Exception as e:
+                    Color.pl('\n{!} {R}Target timeout:{W} %s' % str(e))
+                    break
+                
+                for client in airodump_target.clients:
+                    if client.station not in self.clients:
+                        Color.clear_entire_line()
+                        Color.pattack('WPA',
+                                      airodump_target,
+                                      'Handshake capture',
+                                      'Discovered new client: {G}%s{W}' % client.station)
+                        Color.pl('')
+                        self.clients.append(client.station)
+                        
+                        if self.view:
+                            self.view.add_log(f'Discovered new client: {client.station}')
+                
+                # Send deauth from secondary interface (non-blocking)
+                if deauth_timer.ended():
+                    self._deauth_dual(airodump_target)
+                    deauth_timer = Timer(Configuration.wpa_deauth_timeout)
+                
+                time.sleep(step_timer.remaining())
+        
+        if handshake is None:
+            Color.pl('\n{!} {O}WPA handshake capture {R}FAILED:{O} Timed out after %d seconds' % (
+                Configuration.wpa_attack_timeout))
+        else:
+            # Save copy of handshake
+            self.save_handshake(handshake)
+        
+        return handshake
+
+    def _deauth_dual(self, target):
+        """
+        Send deauthentication packets using dedicated deauth interface.
+        
+        This method sends deauth packets from the secondary interface without
+        interrupting the capture on the primary interface.
+        
+        Args:
+            target: The Target to deauth, including clients
+        """
+        if Configuration.no_deauth:
+            return
+        
+        for client in [None] + self.clients:
+            target_name = '*broadcast*' if client is None else client
+            Color.clear_entire_line()
+            Color.pattack('WPA',
+                          target,
+                          'Handshake capture',
+                          'Deauthing {O}%s{W} [from {C}%s{W}]' % (target_name, self.deauth_interface))
+            
+            if self.view:
+                self.view.add_log(f'Sending deauth to {target_name} from {self.deauth_interface}')
+            
+            # Send deauth from dedicated deauth interface
+            Aireplay.deauth(target.bssid, 
+                          client_mac=client, 
+                          timeout=2,
+                          interface=self.deauth_interface)
+
+    def _deauth_parallel(self, target):
+        """
+        Send deauthentication packets from both interfaces in parallel.
+        
+        This method sends deauth packets from both the primary and secondary
+        interfaces simultaneously using threads for better coverage.
+        
+        Args:
+            target: The Target to deauth, including clients
+        """
+        if Configuration.no_deauth:
+            return
+        
+        import threading
+        
+        # Get client list (broadcast if empty)
+        clients = [None] + self.clients if self.clients else [None]
+        
+        def deauth_from_interface(interface, bssid, clients):
+            """Thread function to send deauth from a single interface."""
+            try:
+                for client in clients:
+                    if Configuration.verbose > 1:
+                        from ..util.logger import log_debug
+                        client_name = '*broadcast*' if client is None else client
+                        log_debug('AttackWPA', f'Sending deauth to {client_name} from {interface}')
+                    Aireplay.deauth(bssid, 
+                                  client_mac=client, 
+                                  timeout=2,
+                                  interface=interface)
+            except Exception as e:
+                from ..util.logger import log_debug
+                log_debug('AttackWPA', f'Deauth error on {interface}: {e}')
+        
+        # Display status
+        Color.clear_entire_line()
+        Color.pattack('WPA',
+                      target,
+                      'Handshake capture',
+                      'Deauthing from {C}%s{W} and {C}%s{W} [DUAL-HCX]' % (
+                          self.capture_interface, self.deauth_interface))
+        
+        if self.view:
+            self.view.add_log(f'Parallel deauth from {self.capture_interface} and {self.deauth_interface}')
+        
+        # Start threads for both interfaces
+        thread1 = threading.Thread(
+            target=deauth_from_interface,
+            args=(self.capture_interface, target.bssid, clients)
+        )
+        thread2 = threading.Thread(
+            target=deauth_from_interface,
+            args=(self.deauth_interface, target.bssid, clients)
+        )
+        
+        # Start both threads
+        thread1.start()
+        thread2.start()
+        
+        # Wait for both to complete
+        thread1.join()
+        thread2.join()
+
+    def _capture_handshake_dual_hcxdump(self):
+        """
+        Capture handshake using dual interface mode with hcxdumptool.
+        
+        Uses hcxdumptool for full spectrum capture on the primary interface
+        and sends parallel deauth from both interfaces for better coverage.
+        
+        Returns:
+            Handshake object if captured, None otherwise
+        """
+        from ..tools.hcxdumptool import HcxDumpTool, HcxPcapngTool
+        
+        handshake = None
+        
+        # Check for existing handshake if not ignoring old ones
+        if not Configuration.ignore_old_handshakes:
+            bssid = self.target.bssid
+            essid = self.target.essid if hasattr(self.target, 'essid') else None
+            handshake = self.load_handshake(bssid=bssid, essid=essid)
+            if handshake:
+                Color.pattack('WPA', self.target, 'Handshake capture',
+                              'found {G}existing handshake{W} for {C}%s{W}' % handshake.essid)
+                Color.pl('\n{+} Using handshake from {C}%s{W}' % handshake.capfile)
+                return handshake
+        
+        # Initialize HcxDumpTool with capture interface only
+        # (we'll use aireplay-ng for deauth from both interfaces)
+        output_file = Configuration.temp('hcxdump_capture.pcapng')
+        
+        # Configure deauth based on PMF
+        pmf_required = hasattr(self.target, 'pmf_required') and self.target.pmf_required
+        
+        # Start capture with hcxdumptool
+        with HcxDumpTool(interface=self.capture_interface,
+                        channel=self.target.channel,
+                        target_bssid=None,  # Full spectrum capture (no BSSID filter)
+                        output_file=output_file,
+                        enable_deauth=False,  # We'll use aireplay-ng for deauth
+                        pmf_required=pmf_required) as hcxdump:
+            
+            Color.clear_entire_line()
+            Color.pattack('WPA', self.target, 'Handshake capture', 
+                         'Starting hcxdumptool [DUAL-HCX]...')
+            
+            if self.view:
+                self.view.add_log('hcxdumptool capture started')
+            
+            # Initialize timers
+            timeout_timer = Timer(Configuration.wpa_attack_timeout)
+            deauth_timer = Timer(Configuration.wpa_deauth_timeout)
+            
+            self.clients = []
+            
+            while handshake is None and not timeout_timer.ended():
+                step_timer = Timer(1)
+                
+                # Update TUI view if available
+                if self.view:
+                    self.view.refresh_if_needed()
+                    self.view.update_progress({
+                        'status': f'Listening for handshake (clients: {len(self.clients)}) [DUAL-HCX]',
+                        'metrics': {
+                            'Clients': len(self.clients),
+                            'Deauth Timer': str(deauth_timer),
+                            'Timeout': str(timeout_timer),
+                            'Mode': 'Dual Interface (hcxdumptool)',
+                            'Capture': self.capture_interface,
+                            'Deauth': self.deauth_interface
+                        }
+                    })
+                
+                # Display status
+                Color.clear_entire_line()
+                Color.pattack('WPA',
+                              self.target,
+                              'Handshake capture',
+                              'Listening [DUAL-HCX]. ({C}%s{W}/{C}%s{W}, clients:{G}%d{W}, deauth:{O}%s{W}, timeout:{R}%s{W})' % (
+                                  self.capture_interface, self.deauth_interface,
+                                  len(self.clients), deauth_timer, timeout_timer))
+                
+                # Check if hcxdumptool is still running
+                if not hcxdump.is_running():
+                    Color.pl('\n{!} {R}hcxdumptool process died unexpectedly{W}')
+                    Color.pl('{!} {O}Falling back to airodump-ng mode{W}')
+                    if self.view:
+                        self.view.add_log('hcxdumptool process died - falling back to airodump-ng')
+                    
+                    # Log error details for debugging
+                    from ..util.logger import log_debug
+                    log_debug('AttackWPA', 'hcxdumptool process terminated unexpectedly during capture')
+                    
+                    # Fall back to airodump-ng capture
+                    return self._capture_handshake_dual_airodump()
+                
+                # Check if capture file has data
+                if not hcxdump.has_captured_data():
+                    # No data yet, wait
+                    time.sleep(step_timer.remaining())
+                    continue
+                
+                # Monitor capture file size to prevent memory issues
+                try:
+                    file_size = os.path.getsize(output_file)
+                    max_cap_size = 50 * 1024 * 1024  # 50MB limit
+                    if file_size > max_cap_size:
+                        Color.pl('\n{!} {O}Warning: Capture file is large (%d MB), may cause memory issues{W}' % (file_size // (1024*1024)))
+                        if self.view:
+                            self.view.add_log(f'Warning: Large capture file ({file_size // (1024*1024)} MB)')
+                except (OSError, IOError):
+                    pass
+                
+                # Convert pcapng to hashcat format for validation
+                temp_hash_file = Configuration.temp('handshake_check.22000')
+                
+                # Filter by target BSSID when converting
+                if HcxPcapngTool.convert_to_hashcat(
+                    output_file,
+                    temp_hash_file,
+                    bssid=self.target.bssid,
+                    essid=self.target.essid if hasattr(self.target, 'essid') else None
+                ):
+                    # Check if the hash file contains a valid handshake
+                    if os.path.exists(temp_hash_file) and os.path.getsize(temp_hash_file) > 0:
+                        # We got a handshake!
+                        Color.clear_entire_line()
+                        Color.pattack('WPA',
+                                      self.target,
+                                      'Handshake capture',
+                                      '{G}Captured handshake{W} [DUAL-HCX]')
+                        Color.pl('')
+                        
+                        if self.view:
+                            self.view.add_log('Captured handshake!')
+                            self.view.update_progress({
+                                'status': 'Handshake captured successfully',
+                                'progress': 1.0,
+                                'metrics': {
+                                    'Handshake': '✓',
+                                    'Clients': len(self.clients),
+                                    'Mode': 'Dual Interface (hcxdumptool)'
+                                }
+                            })
+                        
+                        # Create Handshake object from pcapng file
+                        handshake = Handshake(output_file, 
+                                            bssid=self.target.bssid,
+                                            essid=self.target.essid if hasattr(self.target, 'essid') else None)
+                        break
+                
+                # Clean up temp hash file
+                if os.path.exists(temp_hash_file):
+                    os.remove(temp_hash_file)
+                
+                # Send parallel deauth when timer expires
+                if deauth_timer.ended():
+                    self._deauth_parallel(self.target)
+                    deauth_timer = Timer(Configuration.wpa_deauth_timeout)
+                
+                # Sleep for remaining time
+                time.sleep(step_timer.remaining())
+        
+        if handshake is None:
+            Color.pl('\n{!} {O}WPA handshake capture {R}FAILED:{O} Timed out after %d seconds' % (
+                Configuration.wpa_attack_timeout))
+        else:
+            # Save copy of handshake
+            self.save_handshake(handshake)
+        
+        return handshake
 
     def capture_handshake(self):
         """Returns captured or stored handshake, otherwise None."""
