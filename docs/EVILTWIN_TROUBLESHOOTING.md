@@ -107,7 +107,7 @@ Some adapters can do both AP and monitor mode simultaneously, but this is rare a
 
 1. **Kill conflicting processes:**
    ```bash
-   sudo airmon-ng check kill
+   sudo wifite --kill
    ```
    This stops NetworkManager and other services that interfere.
 

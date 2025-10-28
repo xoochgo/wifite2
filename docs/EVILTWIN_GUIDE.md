@@ -177,7 +177,7 @@ Before starting an Evil Twin attack, verify:
 - [ ] wpa_supplicant installed (`wpa_supplicant -v`)
 - [ ] Running as root (`sudo`)
 - [ ] Port 80 available (`sudo lsof -i :80`)
-- [ ] No conflicting services running (`sudo airmon-ng check kill`)
+- [ ] No conflicting services running (`sudo wifite --kill`)
 
 ### Quick Attack Example
 
@@ -481,8 +481,8 @@ Error: hostapd failed to start
 # Kill conflicting processes
 sudo killall NetworkManager wpa_supplicant dhclient
 
-# Or use airmon-ng
-sudo airmon-ng check kill
+# Or use wifite's built-in kill
+sudo wifite --kill
 
 # Restart the attack
 sudo wifite --eviltwin

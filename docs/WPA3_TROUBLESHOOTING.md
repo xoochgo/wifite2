@@ -33,8 +33,13 @@ This guide helps you troubleshoot common issues when attacking WPA3-SAE networks
 iw list | grep -A 10 "Supported interface modes"
 
 # Ensure monitor mode is properly enabled
-airmon-ng check kill
-airmon-ng start wlan0
+# Kill conflicting processes
+sudo wifite --kill
+
+# Set monitor mode (preferred method - hcxdumptool compatible)
+sudo ip link set wlan0 down
+sudo iw dev wlan0 set type monitor
+sudo ip link set wlan0 up
 
 # Verify monitor interface is up
 iwconfig
