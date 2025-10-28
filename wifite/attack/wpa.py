@@ -327,6 +327,12 @@ class AttackWPA(Attack):
             if self.view:
                 self.view.add_log(f"Monitor mode enabled: {self.capture_interface}, {self.deauth_interface}")
             
+            # Set both interfaces to target channel with error handling
+            self._set_interface_channels()
+            
+            # Verify both interfaces are on the target channel
+            self._verify_channel_sync()
+            
             # Route to appropriate capture method based on configuration
             if use_hcxdump_mode:
                 Color.pl('{+} {C}Using hcxdumptool capture method{W}')
@@ -519,6 +525,106 @@ class AttackWPA(Attack):
             self.save_handshake(handshake)
         
         return handshake
+
+    def _set_interface_channels(self):
+        """
+        Set both interfaces to the target channel with error handling.
+        
+        Attempts to set both capture and deauth interfaces to the target channel.
+        If one interface fails, logs an error but continues with the working interface.
+        """
+        from ..util.process import Process
+        from ..util.logger import log_error, log_debug, log_info
+        
+        target_channel = self.target.channel
+        capture_success = False
+        deauth_success = False
+        
+        # Set capture interface channel
+        try:
+            log_debug('AttackWPA', f'Setting {self.capture_interface} to channel {target_channel}')
+            Process(['iw', self.capture_interface, 'set', 'channel', str(target_channel)]).wait()
+            capture_success = True
+            log_info('AttackWPA', f'Successfully set {self.capture_interface} to channel {target_channel}')
+        except Exception as e:
+            error_msg = f'Failed to set channel on {self.capture_interface}: {e}'
+            log_error('AttackWPA', error_msg, e)
+            Color.pl('{!} {R}Error: %s{W}' % error_msg)
+            if self.view:
+                self.view.add_log(f'Error: {error_msg}')
+        
+        # Set deauth interface channel
+        try:
+            log_debug('AttackWPA', f'Setting {self.deauth_interface} to channel {target_channel}')
+            Process(['iw', self.deauth_interface, 'set', 'channel', str(target_channel)]).wait()
+            deauth_success = True
+            log_info('AttackWPA', f'Successfully set {self.deauth_interface} to channel {target_channel}')
+        except Exception as e:
+            error_msg = f'Failed to set channel on {self.deauth_interface}: {e}'
+            log_error('AttackWPA', error_msg, e)
+            Color.pl('{!} {R}Error: %s{W}' % error_msg)
+            if self.view:
+                self.view.add_log(f'Error: {error_msg}')
+        
+        # Report overall status
+        if capture_success and deauth_success:
+            Color.pl('{+} {G}Both interfaces set to channel %d{W}' % target_channel)
+            if self.view:
+                self.view.add_log(f'Both interfaces set to channel {target_channel}')
+        elif capture_success or deauth_success:
+            working_iface = self.capture_interface if capture_success else self.deauth_interface
+            Color.pl('{!} {O}Warning: Only %s successfully set to channel %d{W}' % (working_iface, target_channel))
+            Color.pl('{!} {O}Continuing with working interface...{W}')
+            if self.view:
+                self.view.add_log(f'Warning: Only {working_iface} on channel {target_channel}')
+        else:
+            Color.pl('{!} {R}Error: Failed to set channel on both interfaces{W}')
+            if self.view:
+                self.view.add_log('Error: Failed to set channel on both interfaces')
+
+    def _verify_channel_sync(self):
+        """
+        Verify both interfaces are on the target channel.
+        
+        Checks the current channel of both capture and deauth interfaces
+        and logs a warning if they don't match the target channel.
+        """
+        from ..util.interface_manager import InterfaceManager
+        from ..util.logger import log_warning, log_debug
+        
+        try:
+            # Get current channel of both interfaces
+            capture_channel = InterfaceManager._get_interface_channel(self.capture_interface)
+            deauth_channel = InterfaceManager._get_interface_channel(self.deauth_interface)
+            target_channel = self.target.channel
+            
+            log_debug('AttackWPA', f'Channel verification: target={target_channel}, capture={capture_channel}, deauth={deauth_channel}')
+            
+            # Check if capture interface is on target channel
+            if capture_channel != target_channel:
+                warning_msg = f'Capture interface {self.capture_interface} is on channel {capture_channel}, expected {target_channel}'
+                log_warning('AttackWPA', warning_msg)
+                Color.pl('{!} {O}Warning: %s{W}' % warning_msg)
+                if self.view:
+                    self.view.add_log(f'Warning: {warning_msg}')
+            
+            # Check if deauth interface is on target channel
+            if deauth_channel != target_channel:
+                warning_msg = f'Deauth interface {self.deauth_interface} is on channel {deauth_channel}, expected {target_channel}'
+                log_warning('AttackWPA', warning_msg)
+                Color.pl('{!} {O}Warning: %s{W}' % warning_msg)
+                if self.view:
+                    self.view.add_log(f'Warning: {warning_msg}')
+            
+            # Log success if both match
+            if capture_channel == target_channel and deauth_channel == target_channel:
+                Color.pl('{+} {G}Both interfaces verified on channel %d{W}' % target_channel)
+                if self.view:
+                    self.view.add_log(f'Channel sync verified: both on channel {target_channel}')
+        
+        except Exception as e:
+            log_warning('AttackWPA', f'Failed to verify channel synchronization: {e}')
+            Color.pl('{!} {O}Warning: Could not verify channel synchronization{W}')
 
     def _deauth_dual(self, target):
         """
