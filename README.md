@@ -557,6 +557,95 @@ sudo wifite -h -v | grep -A 20 "DUAL INTERFACE"
 ```
 
 
+Credits & Acknowledgments
+-------------------------
+
+Wifite2 stands on the shoulders of giants. We are deeply grateful to the following projects and contributors whose tools and libraries make this project possible:
+
+### Core Dependencies
+
+* **[aircrack-ng](https://aircrack-ng.org/)** - The aircrack-ng team for the comprehensive suite of wireless auditing tools
+  * Essential for monitor mode, packet capture, and WEP/WPA cracking
+  * Maintained by the aircrack-ng development team
+
+* **[ZerBea](https://github.com/ZerBea)** - For the excellent hcxtools suite
+  * [hcxdumptool](https://github.com/ZerBea/hcxdumptool) - PMKID and WPA3-SAE capture
+  * [hcxtools](https://github.com/ZerBea/hcxtools) - Packet conversion and analysis tools
+  * Critical for modern WPA/WPA2/WPA3 attacks
+
+* **[hashcat](https://hashcat.net/)** - The hashcat team for the world's fastest password recovery tool
+  * GPU-accelerated cracking for WPA/WPA2/WPA3
+  * Essential for PMKID and SAE hash cracking
+
+### WPS Attack Tools
+
+* **[rofl0r](https://github.com/rofl0r)** - For pixiewps
+  * [pixiewps](https://github.com/rofl0r/pixiewps) - Offline WPS brute-force tool
+  * Enables Pixie-Dust attacks on vulnerable WPS implementations
+
+* **[wiire-a](https://github.com/wiire-a)** - For the alternative pixiewps implementation
+  * [pixiewps](https://github.com/wiire-a/pixiewps) - Enhanced Pixie-Dust attack tool
+  * Improved WPS PIN recovery methods
+
+* **[t6x](https://github.com/t6x)** - For reaver-wps-fork-t6x
+  * [reaver](https://github.com/t6x/reaver-wps-fork-t6x) - WPS brute-force and Pixie-Dust attacks
+  * Actively maintained fork with improvements
+
+* **[aanarchyy](https://github.com/aanarchyy)** - For bully
+  * [bully](https://github.com/aanarchyy/bully) - Alternative WPS attack implementation
+  * Provides additional WPS attack capabilities
+
+### Network Tools
+
+* **[hostapd](https://w1.fi/hostapd/)** - Jouni Malinen and contributors
+  * Essential for Evil Twin attacks and rogue AP creation
+  * Industry-standard access point software
+
+* **[dnsmasq](http://www.thekelleys.org.uk/dnsmasq/doc.html)** - Simon Kelley
+  * Lightweight DHCP and DNS server
+  * Critical for Evil Twin captive portal functionality
+
+* **[wpa_supplicant](https://w1.fi/wpa_supplicant/)** - Jouni Malinen and contributors
+  * Credential validation and WPA/WPA2/WPA3 client implementation
+  * Used for testing captured credentials
+
+### Additional Tools
+
+* **[tshark/Wireshark](https://www.wireshark.org/)** - The Wireshark Foundation
+  * Packet analysis and handshake verification
+  * Essential for validating captured data
+
+* **[macchanger](https://github.com/alobbs/macchanger)** - Álvaro López Ortega
+  * MAC address randomization for anonymity
+  * Helps avoid detection during testing
+
+* **[coWPAtty](https://tools.kali.org/wireless-attacks/cowpatty)** - Joshua Wright
+  * WPA-PSK dictionary attack tool
+  * Additional handshake validation
+
+* **[John the Ripper](https://www.openwall.com/john/)** - Solar Designer and contributors
+  * Password cracking with CPU/GPU support
+  * Alternative cracking engine
+
+### Python Libraries
+
+* **[Rich](https://github.com/Textualize/rich)** - Will McGugan and contributors
+  * Beautiful terminal formatting and TUI components
+  * Powers the modern wifite interface
+
+### Original Project
+
+* **[derv82](https://github.com/derv82)** - Original wifite author
+  * Created the original wifite tool that inspired this project
+  * Pioneered the concept of automated wireless auditing
+
+### Community Contributors
+
+Special thanks to all the contributors who have submitted pull requests, reported issues, tested features, and helped improve wifite2. Your contributions make this project better for everyone.
+
+**Note:** If you maintain one of these tools and would like to update this attribution or add additional information, please open an issue or pull request.
+
+
 Contributing
 ------------
 
