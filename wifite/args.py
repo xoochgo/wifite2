@@ -239,6 +239,7 @@ against the real AP and captures valid passwords.
         self._add_wps_args(parser.add_argument_group(Color.s('{C}WPS{W}')))
         self._add_pmkid_args(parser.add_argument_group(Color.s('{C}PMKID{W}')))
         self._add_eviltwin_args(parser.add_argument_group(Color.s('{C}EVIL TWIN{W}')))
+        self._add_wpasec_args(parser.add_argument_group(Color.s('{C}WPA-SEC UPLOAD{W}')))
         self._add_command_args(parser.add_argument_group(Color.s('{C}COMMANDS{W}')))
 
         return parser.parse_args()
@@ -830,6 +831,113 @@ against the real AP and captures valid passwords.
                            type=int,
                            help=Color.s('Time to wait for PMKID capture (default: {G}%d{W} seconds)'
                                         % self.config.pmkid_timeout))
+        
+        # Passive PMKID capture arguments
+        pmkid.add_argument('--pmkid-passive',
+                           action='store_true',
+                           dest='pmkid_passive',
+                           help=Color.s('Passive PMKID capture mode: Sniff all networks '
+                                       'without deauth. {R}WARNING:{W} Requires authorization. '
+                                       '(default: {G}off{W})'))
+        
+        pmkid.add_argument('--pmkid-sniff',
+                           action='store_true',
+                           dest='pmkid_passive',
+                           help=argparse.SUPPRESS)  # Alias for --pmkid-passive
+        
+        pmkid.add_argument('--pmkid-passive-duration',
+                           action='store',
+                           dest='pmkid_passive_duration',
+                           metavar='[seconds]',
+                           type=int,
+                           help=self._verbose('Duration for passive capture in seconds '
+                                             '(default: {G}infinite{W})'))
+        
+        pmkid.add_argument('--pmkid-passive-interval',
+                           action='store',
+                           dest='pmkid_passive_interval',
+                           metavar='[seconds]',
+                           type=int,
+                           help=self._verbose('Interval between hash extractions '
+                                             '(default: {G}%d{W} seconds)' 
+                                             % self.config.pmkid_passive_interval))
+
+    def _add_wpasec_args(self, wpasec):
+        """
+        Add wpa-sec upload command-line arguments to argument parser.
+        
+        Defines all wpa-sec related arguments including:
+        - --wpasec: Enable upload functionality
+        - --wpasec-key: API key for authentication
+        - --wpasec-auto: Automatic upload mode
+        - --wpasec-url: Custom server URL
+        - --wpasec-timeout: Connection timeout
+        - --wpasec-email: Notification email
+        - --wpasec-remove: Remove files after upload
+        
+        Args:
+            wpasec: Argument group for wpa-sec options
+            
+        Example:
+            >>> wpasec_group = parser.add_argument_group('WPA-SEC UPLOAD')
+            >>> self._add_wpasec_args(wpasec_group)
+        """
+        wpasec.add_argument('--wpasec',
+                            action='store_true',
+                            dest='wpasec_enabled',
+                            help=Color.s('Enable {C}wpa-sec.stanev.org{W} upload functionality. '
+                                        'Uploads captured handshakes to online cracking service. '
+                                        'Requires API key from wpa-sec.stanev.org (default: {G}off{W})'))
+
+        wpasec.add_argument('--wpasec-key',
+                            action='store',
+                            dest='wpasec_api_key',
+                            metavar='[key]',
+                            type=str,
+                            help=Color.s('API key for {C}wpa-sec.stanev.org{W}. '
+                                        'Register at wpa-sec.stanev.org to obtain your key. '
+                                        'Required for uploading captures.'))
+
+        wpasec.add_argument('--wpasec-auto',
+                            action='store_true',
+                            dest='wpasec_auto_upload',
+                            help=Color.s('Automatically upload all captured handshakes without prompting. '
+                                        'When disabled, you will be asked before each upload. '
+                                        '(default: {G}off{W})'))
+
+        wpasec.add_argument('--wpasec-url',
+                            action='store',
+                            dest='wpasec_url',
+                            metavar='[url]',
+                            type=str,
+                            help=self._verbose('Custom wpa-sec server URL. '
+                                              'Use this to upload to alternative wpa-sec instances. '
+                                              '(default: {G}https://wpa-sec.stanev.org{W})'))
+
+        wpasec.add_argument('--wpasec-timeout',
+                            action='store',
+                            dest='wpasec_timeout',
+                            metavar='[seconds]',
+                            type=int,
+                            help=self._verbose('Connection timeout for uploads in seconds. '
+                                              'Increase if you have a slow connection. '
+                                              '(default: {G}30{W} seconds)'))
+
+        wpasec.add_argument('--wpasec-email',
+                            action='store',
+                            dest='wpasec_email',
+                            metavar='[email]',
+                            type=str,
+                            help=self._verbose('Email address for wpa-sec notifications. '
+                                              'Receive alerts when passwords are cracked. '
+                                              '(default: {G}none{W})'))
+
+        wpasec.add_argument('--wpasec-remove',
+                            action='store_true',
+                            dest='wpasec_remove_after_upload',
+                            help=self._verbose('Remove capture files after successful upload. '
+                                              'Saves disk space but prevents local cracking. '
+                                              '(default: {G}off{W})'))
 
     @staticmethod
     def _add_command_args(commands):

@@ -107,6 +107,11 @@ class Wifite(object):
             Configuration.get_monitor_mode_interface()
             self.owe_scan()
 
+        elif Configuration.pmkid_passive:
+            # Passive PMKID capture mode
+            Configuration.get_monitor_mode_interface()
+            self.passive_pmkid_capture()
+
         else:
             Configuration.get_monitor_mode_interface()
             self.scan_and_attack()
@@ -982,6 +987,53 @@ class Wifite(object):
             Color.pl('{+} {G}No OWE transition mode vulnerabilities detected{W}')
 
         Color.pl('')
+
+    def passive_pmkid_capture(self):
+        """
+        Run passive PMKID capture mode.
+        Continuously monitors all nearby networks and collects PMKID hashes.
+        """
+        from .attack.pmkid_passive import AttackPassivePMKID
+
+        # Only show startup messages in classic mode
+        if not Configuration.use_tui:
+            Color.pl('')
+            Color.pl('{+} {C}Starting Passive PMKID Capture Mode{W}')
+            Color.pl('{+} {O}This will monitor all networks without deauthentication{W}')
+            Color.pl('')
+
+        try:
+            # Create and run passive PMKID attack
+            # Pass TUI controller if TUI mode is enabled
+            tui_controller = self.tui_controller if Configuration.use_tui else None
+            attack = AttackPassivePMKID(tui_controller=tui_controller)
+            attack.run()
+            
+        except KeyboardInterrupt:
+            if not Configuration.use_tui:
+                Color.pl('')
+                Color.pl('{!} {O}Passive capture interrupted by user{W}')
+            
+        except Exception as e:
+            if not Configuration.use_tui:
+                Color.pl('')
+                Color.pl('{!} {R}Error during passive PMKID capture:{W}')
+                Color.pl('{!} {R}%s{W}' % str(e))
+                
+                if Configuration.verbose > 0:
+                    import traceback
+                    Color.pl('')
+                    Color.pl('{!} {D}Stack trace:{W}')
+                    Color.pl('{D}%s{W}' % traceback.format_exc())
+                
+                Color.pl('')
+                Color.pl('{!} {O}Passive capture failed. Check that:{W}')
+                Color.pl('{!} {O}  • hcxdumptool and hcxpcapngtool are installed{W}')
+                Color.pl('{!} {O}  • Your wireless interface supports monitor mode{W}')
+                Color.pl('{!} {O}  • You have sufficient permissions (running as root){W}')
+            else:
+                # In TUI mode, error is already logged by the attack
+                pass
 
     def scan_and_attack(self):
         """

@@ -642,6 +642,181 @@ class PMKIDAttackView(AttackView):
         self.update_pmkid_status(self.has_pmkid)
 
 
+class PassivePMKIDAttackView(AttackView):
+    """Specialized view for passive PMKID capture attacks."""
+
+    def __init__(self, tui_controller, target=None, session=None, target_state=None):
+        # For passive mode, target might be None since we're capturing from all networks
+        super().__init__(tui_controller, target, session, target_state)
+        self.attack_type = "Passive PMKID Capture"
+        self.networks_detected = 0
+        self.pmkids_captured = 0
+        self.capture_file_size = 0
+        self.last_extraction_time = None
+        self.extraction_interval = 30
+        self.capture_duration_limit = 0  # 0 = infinite
+        self.capture_file_path = None
+
+    def update_capture_status(self, networks_detected: int = None, pmkids_captured: int = None, 
+                             capture_file_size: int = None, last_extraction: float = None):
+        """
+        Update passive PMKID capture status.
+
+        Args:
+            networks_detected: Number of unique networks detected
+            pmkids_captured: Number of PMKIDs successfully captured
+            capture_file_size: Size of capture file in bytes
+            last_extraction: Timestamp of last hash extraction
+        """
+        if networks_detected is not None:
+            self.networks_detected = networks_detected
+        if pmkids_captured is not None:
+            self.pmkids_captured = pmkids_captured
+        if capture_file_size is not None:
+            self.capture_file_size = capture_file_size
+        if last_extraction is not None:
+            self.last_extraction_time = last_extraction
+
+        # Calculate progress based on duration if limit is set
+        elapsed_time = int(time.time() - self.attack_start_time)
+        if self.capture_duration_limit > 0:
+            progress = min(1.0, elapsed_time / self.capture_duration_limit)
+        else:
+            # For infinite capture, show indeterminate progress
+            progress = 0.5
+
+        # Build status message
+        if self.pmkids_captured > 0:
+            status = f"Capturing PMKIDs passively ({self.pmkids_captured} captured from {self.networks_detected} networks)"
+        elif self.networks_detected > 0:
+            status = f"Monitoring {self.networks_detected} networks, waiting for PMKIDs..."
+        else:
+            status = "Scanning for networks..."
+
+        # Format file size
+        if self.capture_file_size > 0:
+            if self.capture_file_size >= 1024 * 1024:
+                size_str = f"{self.capture_file_size / (1024 * 1024):.1f} MB"
+            elif self.capture_file_size >= 1024:
+                size_str = f"{self.capture_file_size / 1024:.1f} KB"
+            else:
+                size_str = f"{self.capture_file_size} bytes"
+        else:
+            size_str = "0 bytes"
+
+        # Calculate time since last extraction
+        if self.last_extraction_time:
+            time_since_extraction = int(time.time() - self.last_extraction_time)
+            extraction_str = f"{time_since_extraction}s ago"
+        else:
+            extraction_str = "Never"
+
+        # Build metrics
+        metrics = {
+            'Networks Detected': f'[cyan]{self.networks_detected}[/cyan]',
+            'PMKIDs Captured': f'[bold green]{self.pmkids_captured}[/bold green]' if self.pmkids_captured > 0 else f'[dim]{self.pmkids_captured}[/dim]',
+            'Capture File Size': f'[yellow]{size_str}[/yellow]',
+            'Last Extraction': f'[white]{extraction_str}[/white]',
+            'Extraction Interval': f'{self.extraction_interval}s',
+        }
+
+        # Add duration info
+        if self.capture_duration_limit > 0:
+            remaining = max(0, self.capture_duration_limit - elapsed_time)
+            remaining_str = f"{remaining // 60}m {remaining % 60}s" if remaining >= 60 else f"{remaining}s"
+            metrics['Time Remaining'] = f'[magenta]{remaining_str}[/magenta]'
+        else:
+            metrics['Duration'] = '[dim]Infinite[/dim]'
+
+        self.update_progress({
+            'progress': progress,
+            'status': status,
+            'metrics': metrics
+        })
+
+    def set_extraction_interval(self, interval: int):
+        """
+        Set the hash extraction interval.
+
+        Args:
+            interval: Extraction interval in seconds
+        """
+        self.extraction_interval = interval
+        self.update_capture_status()
+
+    def set_duration_limit(self, duration: int):
+        """
+        Set the capture duration limit.
+
+        Args:
+            duration: Duration limit in seconds (0 = infinite)
+        """
+        self.capture_duration_limit = duration
+        self.update_capture_status()
+
+    def set_capture_file_path(self, path: str):
+        """
+        Set the capture file path.
+
+        Args:
+            path: Path to capture file
+        """
+        self.capture_file_path = path
+
+    def add_pmkid_captured(self, essid: str, bssid: str):
+        """
+        Log a newly captured PMKID.
+
+        Args:
+            essid: Network ESSID
+            bssid: Network BSSID
+        """
+        self.pmkids_captured += 1
+        essid_display = essid if essid else "<hidden>"
+        self.add_log(f"[bold green]✓[/bold green] PMKID captured: {essid_display} ({bssid})")
+        self.update_capture_status()
+
+    def _render_target_info(self) -> Panel:
+        """
+        Override target info rendering for passive mode.
+
+        Returns:
+            Rich Panel with passive capture information
+        """
+        # For passive mode, show general capture info instead of specific target
+        table = Table(show_header=False, box=None, padding=(0, 1))
+        table.add_column("Label", style="bold cyan", width=18)
+        table.add_column("Value", style="white")
+
+        table.add_row("Mode:", "Passive PMKID Capture")
+        table.add_row("Capture Method:", "hcxdumptool (passive)")
+        
+        if self.capture_file_path:
+            table.add_row("Capture File:", self.capture_file_path)
+
+        # Show duration info
+        elapsed_time = int(time.time() - self.attack_start_time)
+        elapsed_str = f"{elapsed_time // 60}m {elapsed_time % 60}s" if elapsed_time >= 60 else f"{elapsed_time}s"
+        table.add_row("Capture Duration:", elapsed_str)
+
+        if self.capture_duration_limit > 0:
+            limit_str = f"{self.capture_duration_limit // 60}m {self.capture_duration_limit % 60}s" if self.capture_duration_limit >= 60 else f"{self.capture_duration_limit}s"
+            table.add_row("Duration Limit:", limit_str)
+        else:
+            table.add_row("Duration Limit:", "Infinite (Ctrl+C to stop)")
+
+        title_text = "[bold cyan]Passive PMKID Sniffing[/bold cyan]"
+        if self.session:
+            title_text = f"[bold magenta]RESUMED[/bold magenta] | {title_text}"
+
+        return Panel(
+            table,
+            title=title_text,
+            border_style="cyan",
+            padding=(0, 1)
+        )
+
+
 class WPA3AttackView(AttackView):
     """Specialized view for WPA3-SAE attacks."""
 

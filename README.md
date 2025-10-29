@@ -188,6 +188,7 @@ Features
 
 ### Attack Methods
 * **[PMKID hash capture](https://hashcat.net/forum/thread-7717.html)** - Fast, clientless WPA/WPA2 attack (enabled by default)
+* **Passive PMKID Sniffing** - Continuous, untargeted PMKID capture from all nearby networks (use with: `--pmkid-passive`)
 * **WPS Pixie-Dust Attack** - Offline WPS PIN recovery (enabled by default, force with: `--wps-only --pixie`)
 * **WPS PIN Attack** - Online WPS brute-force (enabled by default, force with: `--wps-only --no-pixie`)
 * **WPA/WPA2 Handshake Capture** - Traditional 4-way handshake attack (enabled by default, force with: `--no-wps`)
@@ -358,6 +359,7 @@ sudo wifite -vv
 - WPA3-SAE cracking is computationally intensive
 - Use GPU acceleration (CUDA/OpenCL) for best performance
 - Consider using cloud-based cracking services for large wordlists
+
 
 ### Resume Feature
 
@@ -556,6 +558,11 @@ sudo wifite -h -v | grep -A 20 "EVIL TWIN"
 For Dual Interface specific help:
 ```bash
 sudo wifite -h -v | grep -A 20 "DUAL INTERFACE"
+```
+
+For Passive PMKID specific help:
+```bash
+sudo wifite -h -v | grep -A 10 "PMKID"
 ```
 
 

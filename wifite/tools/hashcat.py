@@ -256,3 +256,103 @@ class HcxPcapngTool(Dependency):
 
         os.remove(self.pmkid_file)
         return matching_pmkid_hash
+
+    @staticmethod
+    def extract_all_pmkids(pcapng_file):
+        """
+        Extract all PMKID hashes from a pcapng file.
+        
+        Args:
+            pcapng_file: Path to pcapng capture file
+            
+        Returns:
+            List of dicts: [{'bssid': str, 'essid': str, 'hash': str}, ...]
+        """
+        temp_hash_file = Configuration.temp('all_pmkids.22000')
+        
+        # Remove temp file if it exists
+        if os.path.exists(temp_hash_file):
+            os.remove(temp_hash_file)
+        
+        # Check if pcapng file exists
+        if not os.path.exists(pcapng_file):
+            return []
+        
+        command = [
+            'hcxpcapngtool',
+            '-o', temp_hash_file,
+            pcapng_file
+        ]
+        
+        process = Process(command)
+        process.wait()
+        
+        # If extraction failed or no hashes found, return empty list
+        if not os.path.exists(temp_hash_file):
+            return []
+        
+        pmkids = []
+        try:
+            with open(temp_hash_file, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    
+                    # Skip empty lines
+                    if not line:
+                        continue
+                    
+                    # PMKID hash format: WPA*01*PMKID*MAC_AP*MAC_CLIENT*ESSID
+                    # or: WPA*02*PMKID*MAC_AP*MAC_CLIENT*ESSID (for WPA2)
+                    # The hash line should start with 'WPA*'
+                    if not line.startswith('WPA*'):
+                        continue
+                    
+                    # Parse hash fields
+                    fields = line.split('*')
+                    
+                    # Need at least 6 fields for a valid PMKID hash
+                    if len(fields) < 6:
+                        continue
+                    
+                    # Extract BSSID (MAC_AP), ESSID, and full hash
+                    # fields[0] = 'WPA'
+                    # fields[1] = type (01 or 02)
+                    # fields[2] = PMKID hash
+                    # fields[3] = MAC_AP (BSSID)
+                    # fields[4] = MAC_CLIENT
+                    # fields[5] = ESSID (may be empty or hex-encoded)
+                    
+                    bssid = fields[3] if len(fields) > 3 else ''
+                    essid_hex = fields[5] if len(fields) > 5 else ''
+                    
+                    # Format BSSID with colons (convert from 'aabbccddeeff' to 'aa:bb:cc:dd:ee:ff')
+                    if bssid and len(bssid) == 12:
+                        bssid = ':'.join([bssid[i:i+2] for i in range(0, 12, 2)]).upper()
+                    
+                    # Decode ESSID from hex to ASCII
+                    essid = ''
+                    if essid_hex:
+                        try:
+                            # ESSID is hex-encoded, decode it to get the actual network name
+                            essid = bytes.fromhex(essid_hex).decode('utf-8', errors='ignore')
+                        except (ValueError, UnicodeDecodeError):
+                            # If decoding fails, use the hex value as-is
+                            essid = essid_hex
+                    
+                    pmkids.append({
+                        'bssid': bssid,
+                        'essid': essid,
+                        'hash': line
+                    })
+        except Exception as e:
+            # Handle any file reading errors gracefully
+            Color.pl('{!} {R}Error parsing PMKID hashes: {O}%s{W}' % str(e))
+        finally:
+            # Clean up temporary file
+            if os.path.exists(temp_hash_file):
+                try:
+                    os.remove(temp_hash_file)
+                except:
+                    pass
+        
+        return pmkids

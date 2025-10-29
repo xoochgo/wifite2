@@ -167,6 +167,19 @@ class CrackHelper:
                 essid_discovery = handshakenew.essid
 
                 essid = essid if essid_discovery is None else essid_discovery
+            elif hs_type == 'PMKID':
+                # Decode hex-encoded ESSID from passive PMKID capture
+                # Check if essid looks like hex (all characters are hex digits)
+                if all(c in '0123456789ABCDEFabcdef' for c in essid):
+                    try:
+                        # Try to decode from hex
+                        decoded_essid = bytes.fromhex(essid).decode('utf-8', errors='ignore')
+                        # Only use decoded version if it's not empty and looks reasonable
+                        if decoded_essid and len(decoded_essid) > 0:
+                            essid = decoded_essid
+                    except (ValueError, UnicodeDecodeError):
+                        # If decoding fails, keep the original hex string
+                        pass
             
             handshake = {
                 'filename': os.path.join(hs_dir, hs_file),

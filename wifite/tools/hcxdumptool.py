@@ -218,6 +218,95 @@ class HcxDumpTool(Dependency):
             return False
 
 
+class HcxDumpToolPassive:
+    """
+    Wrapper for hcxdumptool in passive mode.
+    Uses --rds=3 flag for passive PMKID capture without deauth.
+    """
+
+    def __init__(self, interface=None, output_file=None):
+        """
+        Initialize passive hcxdumptool wrapper.
+
+        Args:
+            interface: Wireless interface in monitor mode
+            output_file: Output pcapng file path
+        """
+        Configuration.initialize()
+
+        if interface is None:
+            interface = Configuration.interface
+        if interface is None:
+            raise Exception('Wireless interface must be defined (-i)')
+
+        self.interface = interface
+
+        # Generate output file if not provided
+        if output_file is None:
+            self.output_file = Configuration.temp() + 'passive_pmkid.pcapng'
+        else:
+            self.output_file = output_file
+
+        self.pid = None
+        self.proc = None
+
+    def __enter__(self):
+        """
+        Start hcxdumptool in passive mode.
+        Called at start of 'with HcxDumpToolPassive(...) as x:'
+        """
+        # Build the command for passive PMKID capture
+        command = [
+            'hcxdumptool',
+            '-i', self.interface,
+            #'--rds=3',  # Passive mode with PMKID capture
+            '-w', self.output_file
+            #'--enable_status=15'  # Enable all status messages
+        ]
+
+        # Start the process
+        self.proc = Process(command, devnull=False)
+        self.pid = self.proc.pid.pid  # Get the actual PID from the Popen object
+
+        # Give it a moment to start
+        time.sleep(1)
+
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """
+        Stop hcxdumptool gracefully.
+        Called at end of 'with' block.
+        """
+        if self.proc and self.proc.poll() is None:
+            # Send SIGTERM to gracefully stop
+            try:
+                self.proc.interrupt()
+                time.sleep(0.5)
+
+                # Force kill if still running
+                if self.proc.poll() is None:
+                    os.kill(self.pid, signal.SIGKILL)
+            except Exception as e:
+                from ..util.logger import log_debug
+                log_debug('HcxDumpToolPassive', f'Kill process error: {e}')
+
+    def is_running(self) -> bool:
+        """Check if hcxdumptool process is still running."""
+        return self.proc is not None and self.proc.poll() is None
+
+    def get_capture_size(self) -> int:
+        """
+        Get current size of capture file in bytes.
+
+        Returns:
+            File size in bytes, or 0 if file doesn't exist
+        """
+        if os.path.exists(self.output_file):
+            return os.path.getsize(self.output_file)
+        return 0
+
+
 class HcxPcapngTool(Dependency):
     """Wrapper around hcxpcapngtool for converting captures to hashcat format."""
 

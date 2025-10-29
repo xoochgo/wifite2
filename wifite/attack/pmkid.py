@@ -9,6 +9,7 @@ from ..util.timer import Timer
 from ..util.output import OutputManager
 from ..model.pmkid_result import CrackResultPMKID
 from ..tools.airodump import Airodump
+from ..util.wpasec_uploader import WpaSecUploader
 from threading import Thread, active_count
 import os
 import time
@@ -161,6 +162,27 @@ class AttackPMKID(Attack):
         if self.view:
             self.view.add_log(f"PMKID hash ready: {os.path.basename(pmkid_file)}")
             self.view.add_log("Proceeding to crack phase...")
+
+        # Upload to wpa-sec if configured
+        # Note: wpa-sec only accepts pcap/pcapng files, not .22000 hash files
+        # Upload the original pcapng capture file instead of the hash file
+        if WpaSecUploader.should_upload():
+            if self.view:
+                self.view.add_log("Checking wpa-sec upload configuration...")
+            
+            # Use the pcapng file if it exists, otherwise skip upload
+            if os.path.exists(self.pcapng_file):
+                WpaSecUploader.upload_capture(
+                    self.pcapng_file,
+                    self.target.bssid,
+                    self.target.essid,
+                    capture_type='pmkid',
+                    view=self.view
+                )
+            else:
+                Color.pl('{!} {O}wpa-sec upload skipped: pcapng file not found{W}')
+                if self.view:
+                    self.view.add_log("wpa-sec upload skipped: pcapng file not found")
 
         # Check for the --skip-crack flag
         if Configuration.skip_crack:

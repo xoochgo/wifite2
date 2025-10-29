@@ -69,6 +69,9 @@ class Dependency(object):
         # Check Evil Twin tools (optional, but warn if missing)
         cls._check_eviltwin_tools()
 
+        # Check wpa-sec upload tools (optional, but warn if missing)
+        cls._check_wpasec_tools()
+
     @classmethod
     def _check_wpa3_tools(cls):
         """Check for WPA3-specific tools and warn if missing."""
@@ -122,6 +125,19 @@ class Dependency(object):
 
             import sys
             sys.exit(-1)
+
+    @classmethod
+    def _check_wpasec_tools(cls):
+        """Check for wpa-sec upload tools and warn if missing."""
+        from ..util.color import Color
+        from .wlancap2wpasec import Wlancap2wpasec
+
+        if not Wlancap2wpasec.exists():
+            Color.pl('\n{!} {O}Warning: wpa-sec upload functionality will not be available{W}')
+            Color.pl('{!} {O}Missing tool: {R}wlancap2wpasec{W}')
+            Color.pl('{!} {O}Install with: {C}apt install hcxtools{W}')
+            Color.pl('{!} {O}wpa-sec allows uploading captures to wpa-sec.stanev.org for online cracking{W}')
+            Color.pl('')
 
     @classmethod
     def fails_dependency_check(cls):

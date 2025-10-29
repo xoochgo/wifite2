@@ -71,6 +71,10 @@ class Configuration(object):
     resume_id = None
     clean_sessions = None
     use_pmkid_only = None
+    # Passive PMKID capture settings
+    pmkid_passive = None
+    pmkid_passive_duration = None
+    pmkid_passive_interval = None
     wep_attacks = None
     wep_crack_at_ivs = None
     wep_filter = None
@@ -96,6 +100,14 @@ class Configuration(object):
     use_tui = None  # None = classic (default), True = force TUI, False = classic
     tui_refresh_rate = None
     tui_log_buffer_size = None
+    # WPA-SEC upload settings
+    wpasec_enabled = None
+    wpasec_api_key = None
+    wpasec_auto_upload = None
+    wpasec_url = None
+    wpasec_timeout = None
+    wpasec_email = None
+    wpasec_remove_after_upload = None
 
     @classmethod
     def initialize(cls, load_interface=True):
@@ -202,6 +214,11 @@ class Configuration(object):
         cls.use_pmkid_only = False  # Only use PMKID Capture+Crack attack
         cls.pmkid_timeout = 300  # Time to wait for PMKID capture
         cls.dont_use_pmkid = False  # Don't use PMKID attack
+        
+        # Passive PMKID capture variables
+        cls.pmkid_passive = False  # Enable passive PMKID capture mode
+        cls.pmkid_passive_duration = 0  # Duration for passive capture (0 = infinite)
+        cls.pmkid_passive_interval = 30  # Interval between hash extractions in seconds
 
         # Default dictionary for cracking
         cls.cracked_file = 'cracked.json'
@@ -272,6 +289,15 @@ class Configuration(object):
         cls.tui_color_scheme = 'default'  # Color scheme for TUI
         cls.tui_debug = False  # Enable TUI debug logging
 
+        # WPA-SEC upload settings
+        cls.wpasec_enabled = False  # Enable wpa-sec upload functionality
+        cls.wpasec_api_key = None  # User API key for wpa-sec.stanev.org
+        cls.wpasec_auto_upload = False  # Automatically upload without prompting
+        cls.wpasec_url = 'https://wpa-sec.stanev.org'  # wpa-sec server URL
+        cls.wpasec_timeout = 30  # Connection timeout in seconds
+        cls.wpasec_email = None  # Optional email for notifications
+        cls.wpasec_remove_after_upload = False  # Remove capture file after successful upload
+
         # A list to cache all checked commands (e.g. `which hashcat` will execute only once)
         cls.existing_commands = {}
 
@@ -303,6 +329,7 @@ class Configuration(object):
         cls.parse_pmkid_args(args)
         cls.parse_eviltwin_args(args)
         cls.parse_dual_interface_args(args)
+        cls.parse_wpasec_args(args)
         cls.parse_encryption()
 
         cls.parse_wep_attacks()
@@ -342,6 +369,10 @@ class Configuration(object):
         # Validate Evil Twin configuration
         if cls.use_eviltwin:
             cls._validate_eviltwin_config()
+
+        # Validate wpa-sec configuration
+        if cls.wpasec_enabled:
+            cls._validate_wpasec_config()
 
     @classmethod
     def _validate_eviltwin_config(cls):
@@ -402,6 +433,84 @@ class Configuration(object):
 
         Color.pl('{+} {G}Evil Twin configuration validated{W}')
         Color.pl('{+} Found {G}%d{W} AP-capable interface(s)' % len(ap_interfaces))
+
+    @classmethod
+    def _validate_wpasec_config(cls):
+        """
+        Validate wpa-sec configuration settings.
+        
+        Performs validation checks on wpa-sec configuration:
+        - API key presence (required when wpa-sec is enabled)
+        - API key format (minimum 8 characters, alphanumeric with hyphens/underscores)
+        - API key character validation
+        
+        Raises:
+            RuntimeError: If validation fails with descriptive error message
+            
+        Side Effects:
+            - Displays error messages to user via Color.pl()
+            - Provides helpful hints for fixing configuration issues
+            
+        Example:
+            >>> Configuration.wpasec_enabled = True
+            >>> Configuration.wpasec_api_key = "abc123"
+            >>> Configuration._validate_wpasec_config()
+            RuntimeError: Invalid wpa-sec API key: too short
+        """
+        import re
+
+        # Validate API key format if provided
+        if cls.wpasec_api_key:
+            # API key should be alphanumeric and at least 8 characters
+            if len(cls.wpasec_api_key) < 8:
+                Color.pl('{!} {R}Error: wpa-sec API key must be at least 8 characters{W}')
+                raise RuntimeError('Invalid wpa-sec API key: too short')
+            
+            # Check if API key contains only valid characters (alphanumeric and common special chars)
+            if not re.match(r'^[a-zA-Z0-9_\-]+$', cls.wpasec_api_key):
+                Color.pl('{!} {R}Error: wpa-sec API key contains invalid characters{W}')
+                Color.pl('{!} {O}API key should only contain letters, numbers, hyphens, and underscores{W}')
+                raise RuntimeError('Invalid wpa-sec API key format')
+        else:
+            # API key is required if wpa-sec is enabled
+            Color.pl('{!} {R}Error: wpa-sec upload enabled but no API key provided{W}')
+            Color.pl('{!} {O}Use {C}--wpasec-key{O} to specify your wpa-sec.stanev.org API key{W}')
+            raise RuntimeError('wpa-sec API key required')
+
+        # Validate URL format if custom URL provided
+        if cls.wpasec_url:
+            url_pattern = re.compile(
+                r'^https?://'  # http:// or https://
+                r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|'  # domain...
+                r'localhost|'  # localhost...
+                r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # ...or ip
+                r'(?::\d+)?'  # optional port
+                r'(?:/?|[/?]\S+)$', re.IGNORECASE)
+            
+            if not url_pattern.match(cls.wpasec_url):
+                Color.pl('{!} {R}Error: Invalid wpa-sec URL format: {O}%s{W}' % cls.wpasec_url)
+                Color.pl('{!} {O}URL must start with http:// or https://{W}')
+                raise RuntimeError('Invalid wpa-sec URL format')
+
+        # Validate timeout value is positive integer
+        if cls.wpasec_timeout:
+            if not isinstance(cls.wpasec_timeout, int) or cls.wpasec_timeout <= 0:
+                Color.pl('{!} {R}Error: wpa-sec timeout must be a positive integer{W}')
+                raise RuntimeError('Invalid wpa-sec timeout value')
+            
+            if cls.wpasec_timeout < 10:
+                Color.pl('{!} {O}Warning: wpa-sec timeout is very short ({G}%d{O} seconds){W}' % cls.wpasec_timeout)
+                Color.pl('{!} {O}Uploads may fail due to insufficient time{W}')
+
+        # Validate email format if provided
+        if cls.wpasec_email:
+            email_pattern = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+            if not email_pattern.match(cls.wpasec_email):
+                Color.pl('{!} {R}Error: Invalid email format: {O}%s{W}' % cls.wpasec_email)
+                raise RuntimeError('Invalid wpa-sec email format')
+
+        if cls.verbose > 0:
+            Color.pl('{+} {G}wpa-sec configuration validated{W}')
 
     @classmethod
     def parse_settings_args(cls, args):
@@ -726,6 +835,20 @@ class Configuration(object):
         if args.dont_use_pmkid:
             cls.dont_use_pmkid = True
             Color.pl('{+} {C}option:{W} will NOT use {C}PMKID{W} attack on WPA networks')
+        
+        # Passive PMKID capture arguments
+        if args.pmkid_passive:
+            cls.pmkid_passive = True
+            Color.pl('{+} {C}option:{W} {G}passive PMKID capture mode{W} enabled')
+            Color.pl('{!} {R}WARNING:{W} Passive monitoring requires proper authorization')
+        
+        if args.pmkid_passive_duration:
+            cls.pmkid_passive_duration = args.pmkid_passive_duration
+            Color.pl('{+} {C}option:{W} passive capture duration: {G}%d seconds{W}' % args.pmkid_passive_duration)
+        
+        if args.pmkid_passive_interval:
+            cls.pmkid_passive_interval = args.pmkid_passive_interval
+            Color.pl('{+} {C}option:{W} passive capture extraction interval: {G}%d seconds{W}' % args.pmkid_passive_interval)
 
     @classmethod
     def parse_eviltwin_args(cls, args):
@@ -841,6 +964,64 @@ class Configuration(object):
         if hasattr(args, 'use_hcxdump') and args.use_hcxdump:
             cls.use_hcxdump = True
             Color.pl('{+} {C}option:{W} using {G}hcxdumptool{W} for dual interface WPA capture')
+
+    @classmethod
+    def parse_wpasec_args(cls, args):
+        """
+        Parse wpa-sec upload-specific command-line arguments.
+        
+        Extracts and sets wpa-sec configuration from parsed arguments including:
+        - API key (with masking for security)
+        - Auto-upload mode
+        - Custom server URL
+        - Connection timeout
+        - Notification email
+        - File removal after upload
+        
+        Args:
+            args: Parsed command-line arguments object from argparse
+            
+        Side Effects:
+            - Sets class variables for wpa-sec configuration
+            - Displays configuration messages to user via Color.pl()
+            - Automatically enables wpasec_enabled if API key is provided
+            
+        Example:
+            >>> Configuration.parse_wpasec_args(parsed_args)
+            {+} option: wpa-sec API key: abc1****
+            {+} option: wpa-sec automatic upload enabled (no prompts)
+        """
+        if hasattr(args, 'wpasec_enabled') and args.wpasec_enabled:
+            cls.wpasec_enabled = True
+            Color.pl('{+} {C}option:{W} wpa-sec upload functionality {G}enabled{W}')
+
+        if hasattr(args, 'wpasec_api_key') and args.wpasec_api_key:
+            cls.wpasec_api_key = args.wpasec_api_key
+            # Mask the API key in output for security
+            masked_key = args.wpasec_api_key[:4] + '*' * (len(args.wpasec_api_key) - 4) if len(args.wpasec_api_key) > 4 else '****'
+            Color.pl('{+} {C}option:{W} wpa-sec API key: {G}%s{W}' % masked_key)
+            # Enable wpa-sec if API key is provided
+            cls.wpasec_enabled = True
+
+        if hasattr(args, 'wpasec_auto_upload') and args.wpasec_auto_upload:
+            cls.wpasec_auto_upload = True
+            Color.pl('{+} {C}option:{W} wpa-sec {G}automatic upload{W} enabled (no prompts)')
+
+        if hasattr(args, 'wpasec_url') and args.wpasec_url:
+            cls.wpasec_url = args.wpasec_url
+            Color.pl('{+} {C}option:{W} wpa-sec custom URL: {G}%s{W}' % args.wpasec_url)
+
+        if hasattr(args, 'wpasec_timeout') and args.wpasec_timeout:
+            cls.wpasec_timeout = args.wpasec_timeout
+            Color.pl('{+} {C}option:{W} wpa-sec upload timeout: {G}%d seconds{W}' % args.wpasec_timeout)
+
+        if hasattr(args, 'wpasec_email') and args.wpasec_email:
+            cls.wpasec_email = args.wpasec_email
+            Color.pl('{+} {C}option:{W} wpa-sec notification email: {G}%s{W}' % args.wpasec_email)
+
+        if hasattr(args, 'wpasec_remove_after_upload') and args.wpasec_remove_after_upload:
+            cls.wpasec_remove_after_upload = True
+            Color.pl('{+} {C}option:{W} wpa-sec {O}remove capture files{W} after successful upload')
 
     @classmethod
     def parse_tui_args(cls, args):

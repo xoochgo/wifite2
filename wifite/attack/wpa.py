@@ -12,6 +12,7 @@ from ..util.timer import Timer
 from ..util.output import OutputManager
 from ..model.handshake import Handshake
 from ..model.wpa_result import CrackResultWPA
+from ..util.wpasec_uploader import WpaSecUploader
 import time
 import os
 import re
@@ -165,6 +166,23 @@ class AttackWPA(Attack):
         Color.pl('\n{+} analysis of captured handshake file:')
         handshake.analyze()
 
+        # Determine if the target is WPA3-SAE for upload
+        target_is_wpa3_sae = (self.target.primary_authentication == 'SAE' and 
+                              handshake.capfile.endswith('.pcapng'))
+        
+        # Upload to wpa-sec if configured
+        if WpaSecUploader.should_upload():
+            capture_type = 'sae' if target_is_wpa3_sae else 'handshake'
+            if self.view:
+                self.view.add_log("Checking wpa-sec upload configuration...")
+            WpaSecUploader.upload_capture(
+                handshake.capfile,
+                self.target.bssid,
+                self.target.essid,
+                capture_type=capture_type,
+                view=self.view
+            )
+
         # Check for the --skip-crack flag
         if Configuration.skip_crack:
             return self._extracted_from_run_30(
@@ -180,12 +198,10 @@ class AttackWPA(Attack):
             self.success = False
             return False
 
-        # Determine if the target is WPA3-SAE
+        # Note: target_is_wpa3_sae already determined above for upload
         # For transition mode networks, check if we actually captured a SAE handshake
         # or a WPA2 handshake. Old .cap files from airodump-ng contain WPA2 handshakes.
         # Only .pcapng files from hcxdumptool contain SAE handshakes.
-        target_is_wpa3_sae = (self.target.primary_authentication == 'SAE' and 
-                              handshake.capfile.endswith('.pcapng'))
 
         cracker = "Hashcat" # Default to Hashcat
         # TODO: Potentially add a fallback or user choice for aircrack-ng for non-SAE?
@@ -513,6 +529,20 @@ class AttackWPA(Attack):
                                 'Clients': len(self.clients)
                             }
                         })
+                    
+                    # Upload to wpa-sec if configured
+                    if WpaSecUploader.should_upload():
+                        # Determine capture type based on file extension
+                        capture_type = 'sae' if handshake.capfile.endswith('.pcapng') else 'handshake'
+                        if self.view:
+                            self.view.add_log("Checking wpa-sec upload configuration...")
+                        WpaSecUploader.upload_capture(
+                            handshake.capfile,
+                            self.target.bssid,
+                            self.target.essid,
+                            capture_type=capture_type,
+                            view=self.view
+                        )
                     
                     break
                 
@@ -908,6 +938,21 @@ class AttackWPA(Attack):
                         handshake = Handshake(output_file, 
                                             bssid=self.target.bssid,
                                             essid=self.target.essid if hasattr(self.target, 'essid') else None)
+                        
+                        # Upload to wpa-sec if configured
+                        if WpaSecUploader.should_upload():
+                            # hcxdumptool creates .pcapng files which may contain SAE handshakes
+                            capture_type = 'sae' if handshake.capfile.endswith('.pcapng') else 'handshake'
+                            if self.view:
+                                self.view.add_log("Checking wpa-sec upload configuration...")
+                            WpaSecUploader.upload_capture(
+                                handshake.capfile,
+                                self.target.bssid,
+                                self.target.essid if hasattr(self.target, 'essid') else None,
+                                capture_type=capture_type,
+                                view=self.view
+                            )
+                        
                         break
                 
                 # Clean up temp hash file
