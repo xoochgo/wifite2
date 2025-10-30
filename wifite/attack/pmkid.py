@@ -171,6 +171,7 @@ class AttackPMKID(Attack):
                 self.view.add_log("Checking wpa-sec upload configuration...")
             
             # Use the pcapng file if it exists, otherwise skip upload
+            # Note: If only .22000 hash file exists, that's fine - wpa-sec doesn't accept hash files anyway
             if os.path.exists(self.pcapng_file):
                 WpaSecUploader.upload_capture(
                     self.pcapng_file,
@@ -179,10 +180,7 @@ class AttackPMKID(Attack):
                     capture_type='pmkid',
                     view=self.view
                 )
-            else:
-                Color.pl('{!} {O}wpa-sec upload skipped: pcapng file not found{W}')
-                if self.view:
-                    self.view.add_log("wpa-sec upload skipped: pcapng file not found")
+            # Silently skip if pcapng doesn't exist - this is normal when using existing hash files
 
         # Check for the --skip-crack flag
         if Configuration.skip_crack:
