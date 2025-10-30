@@ -591,6 +591,184 @@ A: First, verify the attacks are unauthorized. If confirmed malicious, document 
 **Q: Can attackers detect that I'm monitoring?**
 A: No, passive monitoring is undetectable. Your wireless adapter only receives frames without transmitting anything.
 
+### WPA-SEC Online Cracking Integration
+
+Wifite integrates with [wpa-sec.stanev.org](https://wpa-sec.stanev.org), a free online WPA/WPA2/WPA3 password cracking service. Upload your captured handshakes and PMKIDs to leverage distributed computing resources for cracking.
+
+#### Why Use WPA-SEC?
+
+* **Distributed Cracking** - Leverage massive wordlists and computing power
+* **Free Service** - No cost for basic usage
+* **Multiple Hash Types** - Supports WPA/WPA2 handshakes, PMKIDs, and WPA3-SAE
+* **Email Notifications** - Get notified when passwords are cracked
+* **Complementary** - Works alongside local cracking attempts
+
+#### Quick Start
+
+```bash
+# Enable wpa-sec uploads with your API key
+sudo wifite --wpasec --wpasec-key YOUR_API_KEY
+
+# Automatic upload mode (no prompts)
+sudo wifite --wpasec --wpasec-key YOUR_API_KEY --wpasec-auto
+
+# Upload with email notifications
+sudo wifite --wpasec --wpasec-key YOUR_API_KEY --wpasec-email your@email.com
+
+# Remove capture files after successful upload
+sudo wifite --wpasec --wpasec-key YOUR_API_KEY --wpasec-auto --wpasec-remove
+```
+
+#### Getting Your API Key
+
+1. Visit [wpa-sec.stanev.org](https://wpa-sec.stanev.org)
+2. Click "Get your key" or navigate to the API section
+3. Follow the registration process to receive your unique API key
+4. Keep your API key secure - it identifies your submissions
+
+#### Upload Modes
+
+**Interactive Mode (Default)**
+```bash
+sudo wifite --wpasec --wpasec-key YOUR_API_KEY
+```
+* Prompts you after each successful capture
+* Choose which handshakes to upload
+* Full control over what gets submitted
+
+**Automatic Mode**
+```bash
+sudo wifite --wpasec --wpasec-key YOUR_API_KEY --wpasec-auto
+```
+* Uploads all captures automatically
+* No prompts or interruptions
+* Best for unattended operations
+
+#### Command-Line Options
+
+| Option | Description | Example |
+|--------|-------------|---------|
+| `--wpasec` | Enable wpa-sec upload functionality | `--wpasec` |
+| `--wpasec-key [key]` | Your wpa-sec.stanev.org API key | `--wpasec-key abc123...` |
+| `--wpasec-auto` | Automatically upload without prompting | `--wpasec-auto` |
+| `--wpasec-url [url]` | Custom wpa-sec server URL | `--wpasec-url https://custom.server` |
+| `--wpasec-timeout [sec]` | Connection timeout in seconds (default: 30) | `--wpasec-timeout 60` |
+| `--wpasec-email [email]` | Email address for notifications | `--wpasec-email you@example.com` |
+| `--wpasec-remove` | Delete capture files after successful upload | `--wpasec-remove` |
+
+#### Supported Capture Types
+
+Wifite can upload all types of WPA/WPA2/WPA3 captures to wpa-sec:
+
+* **WPA/WPA2 Handshakes** - Traditional 4-way handshake captures (.cap, .pcap, .pcapng)
+* **PMKID Captures** - Clientless WPA2 attack captures (.pcapng format from hcxdumptool)
+* **WPA3-SAE Handshakes** - WPA3 authentication captures (.pcapng)
+* **Compressed Files** - Gzip-compressed captures (.gz)
+
+**Note:** wpa-sec only accepts pcap/pcapng packet capture formats. Hash files (.22000) are not supported for upload.
+
+#### Usage Examples
+
+**Basic WPA attack with upload:**
+```bash
+sudo wifite --wpa --wpasec --wpasec-key YOUR_API_KEY
+```
+
+**PMKID attack with automatic upload:**
+```bash
+sudo wifite --pmkid --wpasec --wpasec-key YOUR_API_KEY --wpasec-auto
+```
+
+**WPA3 attack with email notifications:**
+```bash
+sudo wifite --wpa3-only --wpasec --wpasec-key YOUR_API_KEY --wpasec-email you@example.com
+```
+
+**Target specific network and upload:**
+```bash
+sudo wifite -b AA:BB:CC:DD:EE:FF --wpasec --wpasec-key YOUR_API_KEY
+```
+
+**Dual interface mode with automatic upload:**
+```bash
+sudo wifite --dual-interface --wpasec --wpasec-key YOUR_API_KEY --wpasec-auto
+```
+
+#### Tool Requirements
+
+WPA-SEC integration requires the `wlancap2wpasec` tool from the hcxtools suite:
+
+```bash
+# Kali Linux / Debian / Ubuntu
+sudo apt update && sudo apt install hcxtools
+
+# Arch Linux
+sudo pacman -S hcxtools
+
+# Verify installation
+wlancap2wpasec --version
+```
+
+**Note:** wlancap2wpasec is optional - wifite will work normally without it, but wpa-sec upload features will be unavailable.
+
+#### Troubleshooting
+
+**"wlancap2wpasec not found" error:**
+* Install hcxtools package: `sudo apt install hcxtools`
+* Verify installation: `which wlancap2wpasec`
+* Ensure hcxtools is in your PATH
+
+**"Invalid API key" error:**
+* Verify your API key is correct (check wpa-sec.stanev.org)
+* Ensure there are no extra spaces or characters
+* API keys are case-sensitive
+
+**"Upload failed: Connection timeout" error:**
+* Check your internet connection
+* Try increasing timeout: `--wpasec-timeout 60`
+* Verify wpa-sec.stanev.org is accessible from your network
+
+**"No handshake in capture file" error:**
+* This is expected - wifite validates captures before upload
+* Only valid handshakes/PMKIDs are uploaded
+* Check capture quality with `tshark` or `aircrack-ng`
+
+**Upload succeeds but file not removed:**
+* Ensure you used `--wpasec-remove` flag
+* Check file permissions in the capture directory
+* Files are only removed after confirmed successful upload
+
+#### Privacy and Security Considerations
+
+**What Gets Uploaded:**
+* Capture files containing handshakes/PMKIDs
+* Target network BSSID and ESSID
+* Your API key (for identification)
+
+**What Does NOT Get Uploaded:**
+* Your location or IP address (beyond what's in HTTP headers)
+* Client device information
+* Cracked passwords (you retrieve these from wpa-sec)
+
+**Best Practices:**
+* Only upload captures from authorized testing
+* Use `--wpasec-remove` to avoid leaving sensitive files on disk
+* Keep your API key secure - don't share it publicly
+* Be aware that uploaded data is processed by a third-party service
+* Review wpa-sec.stanev.org privacy policy and terms of service
+
+**Legal Reminder:** Only upload captures from networks you own or have explicit written authorization to test. Uploading captures from unauthorized networks may be illegal in your jurisdiction.
+
+#### Checking Results
+
+After uploading, visit [wpa-sec.stanev.org](https://wpa-sec.stanev.org) to:
+* View your submission history
+* Check cracking progress
+* Download cracked passwords
+* Manage your API key and settings
+
+If you provided an email address with `--wpasec-email`, you'll receive notifications when passwords are successfully cracked.
+
 ### Resume Feature
 
 Wifite automatically saves your attack progress and allows you to resume interrupted sessions:
