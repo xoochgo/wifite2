@@ -186,7 +186,8 @@ class WpaSecUploader:
         
         # Verify file contains handshake/PMKID if bssid provided and file is not .22000
         # .22000 files are PMKID hash files that don't need handshake validation
-        if bssid and not capfile.endswith('.22000'):
+        # Skip validation for passive captures (bssid='multiple') as they contain PMKIDs, not complete handshakes
+        if bssid and bssid != 'multiple' and not capfile.endswith('.22000'):
             try:
                 from ..model.handshake import Handshake
                 
@@ -204,6 +205,8 @@ class WpaSecUploader:
                 # Let wpa-sec determine if the file is valid
                 log_warning('WpaSecUploader', f'Handshake validation warning: {str(e)}')
                 log_debug('WpaSecUploader', 'Proceeding with upload despite validation warning')
+        elif bssid == 'multiple':
+            log_debug('WpaSecUploader', 'Skipping handshake validation for passive capture (multiple BSSIDs)')
         else:
             if capfile.endswith('.22000'):
                 log_debug('WpaSecUploader', 'Skipping handshake validation for .22000 hash file')
