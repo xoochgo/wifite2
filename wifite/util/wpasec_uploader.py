@@ -195,11 +195,13 @@ class WpaSecUploader:
                 hs = Handshake(capfile, bssid=bssid)
                 
                 if not hs.has_handshake():
-                    error_msg = f'No valid handshake found in capture file for BSSID {bssid}'
-                    log_warning('WpaSecUploader', f'Validation failed: {error_msg}')
-                    return False, error_msg
-                
-                log_debug('WpaSecUploader', 'Handshake validation: PASSED')
+                    # Handshake validation failed (tshark didn't detect it)
+                    # However, tshark can be unreliable - cowpatty/aircrack might still detect it
+                    # Log a warning but don't block the upload - let wpa-sec decide
+                    #log_warning('WpaSecUploader', f'Handshake validation warning: tshark did not detect handshake for BSSID {bssid}')
+                    log_debug('WpaSecUploader', 'Proceeding with upload - wpa-sec will validate the file')
+                else:
+                    log_debug('WpaSecUploader', 'Handshake validation: PASSED')
             except Exception as e:
                 # Don't fail validation if handshake check fails
                 # Let wpa-sec determine if the file is valid
@@ -417,7 +419,7 @@ class WpaSecUploader:
             
             # Perform upload - call Wlancap2wpasec.upload() with appropriate parameters
             log_debug('WpaSecUploader', 'Step 4: Initiating upload to wpa-sec')
-            Color.pl('{+} {C}Uploading capture to wpa-sec.stanev.org...{W}')
+            Color.pl('\n{+} {C}Uploading capture to wpa-sec.stanev.org...{W}')
             log_info('WpaSecUploader', f'Calling wlancap2wpasec tool with file: {capfile}')
             log_debug('WpaSecUploader', f'Upload parameters: url={Configuration.wpasec_url}, timeout={Configuration.wpasec_timeout}s, email={Configuration.wpasec_email}')
             

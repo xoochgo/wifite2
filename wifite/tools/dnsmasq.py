@@ -22,18 +22,18 @@ class Dnsmasq(Dependency):
     """
     Wrapper for dnsmasq to provide DHCP and DNS services.
     """
-    
+
     dependency_required = True
     dependency_name = 'dnsmasq'
     dependency_url = 'http://www.thekelleys.org.uk/dnsmasq/doc.html'
-    
+
     def __init__(self, interface, gateway_ip='192.168.100.1', 
                  dhcp_range_start='192.168.100.10', 
                  dhcp_range_end='192.168.100.100',
                  portal_ip=None):
         """
         Initialize Dnsmasq configuration.
-        
+
         Args:
             interface: Network interface to serve on
             gateway_ip: IP address of the gateway (rogue AP)
@@ -46,23 +46,23 @@ class Dnsmasq(Dependency):
         self.dhcp_range_start = dhcp_range_start
         self.dhcp_range_end = dhcp_range_end
         self.portal_ip = portal_ip or gateway_ip
-        
+
         self.config_file = None
         self.lease_file = None
         self.process = None
         self.running = False
-        
+
         log_debug('Dnsmasq', f'Initialized for {interface} with gateway {gateway_ip}')
-    
+
     def generate_config(self) -> str:
         """
         Generate dnsmasq configuration file content.
-        
+
         Returns:
             Configuration file content as string
         """
         config = []
-        
+
         # Interface to listen on
         config.append(f'interface={self.interface}')
         

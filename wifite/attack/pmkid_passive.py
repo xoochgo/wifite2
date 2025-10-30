@@ -31,35 +31,35 @@ except ImportError:
 class AttackPassivePMKID:
     """
     Passive PMKID capture attack that monitors all networks simultaneously.
-    
-    Uses hcxdumptool with --rds=3 flag for passive capture without deauth.
+
+    Uses hcxdumptool for passive capture without deauth.
     Periodically extracts PMKID hashes from the capture file and saves them
     to individual .22000 files for offline cracking.
     """
-    
+
     def __init__(self, tui_controller=None):
         """
         Initialize passive PMKID attack.
-        
+
         Sets up capture file path, statistics tracking, and state variables.
         Initializes captured_pmkids dictionary to track captured hashes by BSSID.
-        
+
         Args:
             tui_controller: Optional TUIController instance for TUI mode
         """
         # Generate capture file path
         self.pcapng_file = Configuration.temp('passive_pmkid.pcapng')
-        
+
         # Dictionary to track captured PMKIDs by BSSID
         # Format: {bssid: {'essid': str, 'hash': str, 'file': str, 'captured_at': float}}
         self.captured_pmkids = {}
-        
+
         # Monitoring thread reference
         self.monitor_thread = None
-        
+
         # HcxDumpToolPassive process reference
         self.dumptool = None
-        
+
         # Statistics dictionary
         self.statistics = {
             'networks_detected': 0,      # Total unique BSSIDs seen
@@ -69,7 +69,7 @@ class AttackPassivePMKID:
             'capture_size_mb': 0.0,       # Current capture file size in MB
             'duration_seconds': 0         # Total capture duration
         }
-        
+
         # TUI support
         self.tui_controller = tui_controller
         self.tui_view = None
@@ -78,27 +78,27 @@ class AttackPassivePMKID:
             self.tui_view.set_extraction_interval(Configuration.pmkid_passive_interval)
             self.tui_view.set_duration_limit(Configuration.pmkid_passive_duration)
             self.tui_view.set_capture_file_path(self.pcapng_file)
-    
+
     def validate_dependencies(self):
         """
         Validate required tools are installed.
-        
+
         Checks for hcxdumptool and hcxpcapngtool availability.
         Displays error message with installation instructions if tools are missing.
-        
+
         Returns:
             bool: True if dependencies are satisfied, False otherwise
         """
         missing = []
-        
+
         # Check for hcxdumptool
         if not Process.exists('hcxdumptool'):
             missing.append('hcxdumptool')
-        
+
         # Check for hcxpcapngtool
         if not HcxPcapngTool.exists():
             missing.append('hcxpcapngtool')
-        
+
         if missing:
             Color.pl('{!} {R}Missing required tools:{W} {O}%s{W}' % ', '.join(missing))
             Color.pl('{!} {O}Install with:{W} {C}apt install hcxdumptool hcxtools{W}')
@@ -106,17 +106,17 @@ class AttackPassivePMKID:
             Color.pl('{!}   {C}https://github.com/ZerBea/hcxdumptool{W}')
             Color.pl('{!}   {C}https://github.com/ZerBea/hcxtools{W}')
             return False
-        
+
         return True
-    
+
     def start_passive_capture(self):
         """
         Start hcxdumptool in passive mode.
-        
+
         Uses HcxDumpToolPassive context manager to ensure proper cleanup.
         Stores process reference for monitoring.
         Displays startup message with capture details.
-        
+
         Returns:
             HcxDumpToolPassive: The passive capture instance
         """
@@ -126,7 +126,7 @@ class AttackPassivePMKID:
             self.tui_view.add_log(f'Interface: {Configuration.interface}')
             self.tui_view.add_log(f'Capture file: {self.pcapng_file}')
             self.tui_view.add_log(f'Extraction interval: {Configuration.pmkid_passive_interval} seconds')
-            
+
             if Configuration.pmkid_passive_duration > 0:
                 self.tui_view.add_log(f'Duration: {Configuration.pmkid_passive_duration} seconds')
             else:
@@ -137,25 +137,25 @@ class AttackPassivePMKID:
             Color.pl('{+} Interface: {G}%s{W}' % Configuration.interface)
             Color.pl('{+} Capture file: {C}%s{W}' % self.pcapng_file)
             Color.pl('{+} Extraction interval: {G}%d seconds{W}' % Configuration.pmkid_passive_interval)
-            
+
             if Configuration.pmkid_passive_duration > 0:
                 Color.pl('{+} Duration: {G}%d seconds{W}' % Configuration.pmkid_passive_duration)
             else:
                 Color.pl('{+} Duration: {G}infinite{W} (press Ctrl+C to stop)')
-            
+
             Color.pl('')
-        
+
         # Create and return HcxDumpToolPassive instance
         # Will be used with context manager in run()
         return HcxDumpToolPassive(
             interface=Configuration.interface,
             output_file=self.pcapng_file
         )
-    
+
     def start_monitoring_thread(self):
         """
         Start background thread for monitoring and extraction.
-        
+
         Creates PassivePMKIDMonitor thread with self reference and extraction interval.
         Stores thread reference for cleanup.
         """
@@ -164,16 +164,16 @@ class AttackPassivePMKID:
             interval=Configuration.pmkid_passive_interval
         )
         self.monitor_thread.start()
-        
+
         if self.tui_view:
             self.tui_view.add_log('Monitoring thread started')
         else:
             Color.pl('{+} {G}Monitoring thread started{W}')
-    
+
     def extract_and_save_pmkids(self):
         """
         Extract PMKID hashes from capture file and save them.
-        
+
         Calls HcxPcapngTool.extract_all_pmkids() to get all PMKID hashes.
         Iterates through extracted hashes and saves new ones.
         Updates captured_pmkids dictionary with new entries.
@@ -182,17 +182,17 @@ class AttackPassivePMKID:
         # Check if capture file exists and has data
         if not os.path.exists(self.pcapng_file):
             return
-        
+
         if os.path.getsize(self.pcapng_file) == 0:
             return
-        
+
         try:
             # Extract all PMKIDs from capture file
             pmkids = HcxPcapngTool.extract_all_pmkids(self.pcapng_file)
-            
+
             if not pmkids:
                 return
-            
+
             # Track new PMKIDs found in this extraction
             new_pmkids = 0
             

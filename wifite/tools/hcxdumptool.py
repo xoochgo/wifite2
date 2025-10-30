@@ -43,7 +43,7 @@ class HcxDumpTool(Dependency):
             interface = Configuration.interface
         if interface is None:
             raise Exception('Wireless interface must be defined (-i)')
-        
+
         # Accept both string and list of interfaces
         if isinstance(interface, str):
             self.interfaces = [interface]
@@ -51,11 +51,11 @@ class HcxDumpTool(Dependency):
             self.interfaces = interface
         else:
             raise ValueError('Interface must be a string or list of strings')
-        
+
         # Validate interface list is not empty
         if not self.interfaces:
             raise ValueError('Interface list cannot be empty')
-        
+
         # Keep backward compatibility with single interface attribute
         self.interface = self.interfaces[0]
 
@@ -90,7 +90,7 @@ class HcxDumpTool(Dependency):
             '-o', self.output_file,
             '--enable_status=15'  # Enable all status messages
         ]
-        
+
         # Add all interfaces with -i flag
         # hcxdumptool supports multiple -i flags for multi-interface capture
         for iface in self.interfaces:

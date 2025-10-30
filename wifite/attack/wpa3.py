@@ -29,14 +29,14 @@ import os
 class AttackWPA3SAE(Attack):
     """
     WPA3-SAE attack implementation.
-    
+
     This class implements various attack strategies for WPA3-SAE networks:
     1. Transition mode downgrade (highest success rate)
     2. Dragonblood exploitation (for vulnerable targets)
     3. Standard SAE handshake capture
     4. Passive capture (when PMF prevents deauth)
     """
-    
+
     def __init__(self, target):
         super(AttackWPA3SAE, self).__init__(target)
         self.clients = []
@@ -45,7 +45,7 @@ class AttackWPA3SAE(Attack):
         self.wpa3_info = None
         self.attack_strategy = None
         self.downgrade_success = False
-        
+
         # Initialize TUI view if in TUI mode
         self.view = None
         if OutputManager.is_tui_mode():
@@ -59,7 +59,7 @@ class AttackWPA3SAE(Attack):
     def run(self):
         """
         Execute WPA3-SAE attack based on target capabilities.
-        
+
         This method:
         1. Checks for required tools
         2. Detects WPA3 capabilities
@@ -106,40 +106,40 @@ class AttackWPA3SAE(Attack):
         else:
             Color.pl('{!} {R}Unknown attack strategy: %s{W}' % self.attack_strategy)
             return False
-    
+
     def _check_wpa3_tools(self):
         """
         Check if required WPA3 tools are available.
-        
+
         Returns:
             bool: True if all required tools are available, False otherwise
         """
         if not WPA3ToolChecker.can_attack_wpa3():
             Color.pl('{!} {R}Cannot attack WPA3 - missing required tools{W}')
-            
+
             missing = WPA3ToolChecker.get_missing_tools()
             if missing:
                 Color.pl('{!} {O}Missing tools:{W}')
                 for tool in missing:
                     url = WPA3ToolChecker.INSTALL_URLS.get(tool, 'N/A')
                     Color.pl('    {R}%s{W}: {C}%s{W}' % (tool, url))
-                
+
                 Color.pl('\n{!} {O}Install missing tools to enable WPA3 attacks{W}')
                 Color.pl('{!} {O}Skipping WPA3 target: {C}%s{W}' % self.target.essid)
-            
+
             return False
-        
+
         return True
-    
+
     def _handle_pmf_prevention(self):
         """
         Handle PMF (Protected Management Frames) preventing deauth attacks.
-        
+
         This method:
         1. Detects PMF status
         2. Informs user of limitations
         3. Switches to passive capture mode
-        
+
         Returns:
             bool: True if PMF is required (deauth disabled), False otherwise
         """
