@@ -109,11 +109,17 @@ class Wifite(object):
 
         elif Configuration.pmkid_passive:
             # Passive PMKID capture mode
+            # Enable TUI by default for passive PMKID unless explicitly disabled
+            if Configuration.use_tui is None:
+                Configuration.use_tui = True
             Configuration.get_monitor_mode_interface()
             self.passive_pmkid_capture()
 
         elif Configuration.monitor_attacks:
             # Wireless attack monitoring mode
+            # Enable TUI by default for attack monitoring unless explicitly disabled
+            if Configuration.use_tui is None:
+                Configuration.use_tui = True
             Configuration.get_monitor_mode_interface()
             self.monitor_wireless_attacks()
 

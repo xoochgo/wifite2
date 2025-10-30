@@ -199,11 +199,11 @@ class TsharkMonitor:
     Wrapper for tshark in monitoring mode for attack detection.
     Captures deauth and disassoc frames in real-time.
     """
-    
+
     def __init__(self, interface, channel=None):
         """
         Initialize TsharkMonitor.
-        
+
         Args:
             interface: Wireless interface to monitor
             channel: Optional channel to monitor (None = current channel)
@@ -211,20 +211,20 @@ class TsharkMonitor:
         self.interface = interface
         self.channel = channel
         self.proc = None
-    
+
     def start(self):
         """
         Start tshark with filters for deauth/disassoc frames.
-        
+
         Filter: wlan.fc.type_subtype == 0x0c || wlan.fc.type_subtype == 0x0a
         - 0x0c = Deauthentication
         - 0x0a = Disassociation
-        
+
         Returns:
             Process object for the tshark process
         """
         import subprocess
-        
+
         command = [
             'tshark',
             '-i', self.interface,
@@ -238,14 +238,14 @@ class TsharkMonitor:
             '-e', 'wlan_radio.channel',
             '-Y', '(wlan.fc.type_subtype == 0x0c) || (wlan.fc.type_subtype == 0x0a)'
         ]
-        
+
         self.proc = Process(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         return self.proc
-    
+
     def read_frame(self):
         """
         Read and parse next frame from tshark output.
-        
+
         Returns:
             Dictionary with frame data or None if no frame available:
             {
@@ -259,20 +259,20 @@ class TsharkMonitor:
         """
         if not self.proc or not self.proc.pid or not self.proc.pid.stdout:
             return None
-        
+
         try:
             line = self.proc.pid.stdout.readline()
             if not line:
                 return None
-            
+
             # Decode if bytes
             if isinstance(line, bytes):
                 line = line.decode('utf-8', errors='ignore')
-            
+
             line = line.strip()
             if not line:
                 return None
-            
+
             fields = line.split('\t')
             if len(fields) < 5:
                 return None

@@ -127,9 +127,9 @@ class Airmon(Dependency):
         Fix for bad drivers like the rtl8812AU.
         """
         from ..util.process import Process
-        
+
         Ip.down(interface)
-        
+
         if isdeprecated:
             result = Process(['iwconfig', interface, 'mode', 'monitor']).stdout()
             if Configuration.verbose > 0:
@@ -143,9 +143,9 @@ class Airmon(Dependency):
                     Color.pl('{D}iw set type monitor error: %s{W}' % err)
             if err and 'command failed' in err.lower():
                 Color.pl('{!} {O}Warning: iw command may have failed: %s{W}' % err)
-        
+
         Ip.up(interface)
-        
+
         # Give the interface a moment to come up
         time.sleep(0.5)
 
@@ -260,7 +260,7 @@ class Airmon(Dependency):
         # This works for all drivers and is compatible with hcxdumptool (used for WPA3/PMKID)
         # airmon-ng creates interfaces that hcxdumptool doesn't work well with
         Color.p('{+} Enabling {G}monitor mode{W} on {C}%s{W}... ' % iface_name)
-        
+
         # Determine if driver needs special handling
         Airmon.isdeprecated = driver in Airmon.DEPRECATED_DRIVERS
         enabled_interface = Airmon.start_bad_driver(iface_name, Airmon.isdeprecated)

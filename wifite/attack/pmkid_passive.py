@@ -201,14 +201,14 @@ class AttackPassivePMKID:
                 bssid = pmkid_data.get('bssid', '').upper()
                 essid = pmkid_data.get('essid', '')
                 pmkid_hash = pmkid_data.get('hash', '')
-                
+
                 # Skip if we already have this BSSID
                 if bssid in self.captured_pmkids:
                     continue
-                
+
                 # Save the PMKID hash to file
                 pmkid_file = self.save_pmkid_hash(bssid, essid, pmkid_hash)
-                
+
                 if pmkid_file:
                     # Add to captured_pmkids dictionary
                     self.captured_pmkids[bssid] = {
@@ -218,16 +218,16 @@ class AttackPassivePMKID:
                         'captured_at': time.time()
                     }
                     new_pmkids += 1
-                    
+
                     # Notify TUI if available
                     if self.tui_view:
                         self.tui_view.add_pmkid_captured(essid, bssid)
-            
+
             # Update statistics
             self.statistics['networks_detected'] = len(pmkids)
             self.statistics['pmkids_captured'] = len(self.captured_pmkids)
             self.statistics['last_extraction'] = time.time()
-            
+
             # Update TUI or display in classic mode
             if self.tui_view:
                 # Update TUI view with new statistics
@@ -235,68 +235,68 @@ class AttackPassivePMKID:
             elif new_pmkids > 0:
                 # Classic mode - only show if new PMKIDs captured
                 Color.pl('{+} {G}Captured %d new PMKID(s)!{W}' % new_pmkids)
-                
+
         except Exception as e:
             error_msg = f'Error during hash extraction: {str(e)}'
             if self.tui_view:
                 self.tui_view.add_log(f'[red]✗[/red] {error_msg}')
             else:
                 Color.pl('{!} {R}%s{W}' % error_msg)
-            
+
             if Configuration.verbose > 0:
                 import traceback
                 if self.tui_view:
                     self.tui_view.add_log(traceback.format_exc())
                 else:
                     Color.pl('{!} {R}%s{W}' % traceback.format_exc())
-    
+
     def save_pmkid_hash(self, bssid, essid, pmkid_hash):
         """
         Save a single PMKID hash to file.
-        
+
         Generates filename with format: pmkid_{essid}_{bssid}_{timestamp}.22000
         Checks for existing file with same BSSID to prevent duplicates.
         Saves hash to Configuration.wpa_handshake_dir.
-        
+
         Args:
             bssid (str): Target BSSID
             essid (str): Target ESSID
             pmkid_hash (str): PMKID hash in .22000 format
-        
+
         Returns:
             str: File path of saved hash, or None if save failed
         """
         # Create handshake directory if it doesn't exist
         if not os.path.exists(Configuration.wpa_handshake_dir):
             os.makedirs(Configuration.wpa_handshake_dir)
-        
+
         # Generate filesystem-safe filename
         essid_safe = re.sub('[^a-zA-Z0-9]', '', essid) if essid else 'hidden'
         bssid_safe = bssid.replace(':', '-')
         timestamp = time.strftime('%Y-%m-%dT%H-%M-%S')
-        
+
         filename = f'pmkid_{essid_safe}_{bssid_safe}_{timestamp}.22000'
         pmkid_file = os.path.join(Configuration.wpa_handshake_dir, filename)
-        
+
         # Check for existing file with same BSSID to prevent duplicates
         # This is a simple check - more sophisticated duplicate detection
         # could be added by checking file contents
         import glob
         pattern = os.path.join(Configuration.wpa_handshake_dir, f'pmkid_*_{bssid_safe}_*.22000')
         existing_files = glob.glob(pattern)
-        
+
         if existing_files:
             # Already have a PMKID for this BSSID
             if Configuration.verbose > 1:
                 Color.pl('{+} {D}Skipping duplicate PMKID for {C}%s{W}' % bssid)
             return None
-        
+
         try:
             # Save hash to file
             with open(pmkid_file, 'w') as f:
                 f.write(pmkid_hash)
                 f.write('\n')
-            
+
             if self.tui_view:
                 # TUI mode - log is added by add_pmkid_captured in extract_and_save_pmkids
                 pass
@@ -304,9 +304,9 @@ class AttackPassivePMKID:
                 # Classic mode
                 Color.pl('{+} {G}Saved PMKID:{W} {C}%s{W} ({C}%s{W})' % (essid if essid else '<hidden>', bssid))
                 Color.pl('{+} File: {C}%s{W}' % pmkid_file)
-            
+
             return pmkid_file
-            
+
         except Exception as e:
             error_msg = f'Error saving PMKID: {str(e)}'
             if self.tui_view:
@@ -314,22 +314,22 @@ class AttackPassivePMKID:
             else:
                 Color.pl('{!} {R}%s{W}' % error_msg)
             return None
-    
+
     def update_tui_statistics(self):
         """
         Update TUI view with current statistics.
-        
+
         Called periodically to refresh the TUI display with latest capture data.
         """
         if not self.tui_view:
             return
-        
+
         # Calculate capture file size
         if os.path.exists(self.pcapng_file):
             size_bytes = os.path.getsize(self.pcapng_file)
         else:
             size_bytes = 0
-        
+
         # Update TUI view
         self.tui_view.update_capture_status(
             networks_detected=self.statistics['networks_detected'],
@@ -337,11 +337,11 @@ class AttackPassivePMKID:
             capture_file_size=size_bytes,
             last_extraction=self.statistics.get('last_extraction')
         )
-    
+
     def display_statistics(self):
         """
         Display real-time capture statistics.
-        
+
         Shows networks detected, PMKIDs captured, capture duration, and file size.
         Updates display periodically without clearing screen.
         Uses Color class for formatted output in classic mode.
@@ -350,14 +350,14 @@ class AttackPassivePMKID:
         # Calculate duration
         if self.statistics['start_time']:
             self.statistics['duration_seconds'] = int(time.time() - self.statistics['start_time'])
-        
+
         # Calculate capture file size
         if os.path.exists(self.pcapng_file):
             size_bytes = os.path.getsize(self.pcapng_file)
             self.statistics['capture_size_mb'] = size_bytes / (1024 * 1024)
         else:
             size_bytes = 0
-        
+
         if self.tui_view:
             # TUI mode - update the view
             self.tui_view.update_capture_status(
@@ -376,7 +376,7 @@ class AttackPassivePMKID:
             minutes = (duration % 3600) // 60
             seconds = duration % 60
             duration_str = f'{hours:02d}:{minutes:02d}:{seconds:02d}'
-            
+
             # Display statistics
             Color.clear_entire_line()
             Color.p('\r{+} {C}Networks:{W} {G}%d{W} | {C}PMKIDs:{W} {G}%d{W} | {C}Duration:{W} {G}%s{W} | {C}Size:{W} {G}%.2f MB{W}' % (
@@ -385,11 +385,11 @@ class AttackPassivePMKID:
                 duration_str,
                 self.statistics['capture_size_mb']
             ))
-    
+
     def run(self):
         """
         Main entry point for passive PMKID attack.
-        
+
         Validates dependencies before starting.
         Starts passive capture with HcxDumpToolPassive.
         Starts monitoring thread.
@@ -397,37 +397,37 @@ class AttackPassivePMKID:
         Handles duration timeout if configured.
         Calls cleanup on exit.
         """
-        
+
         # Validate dependencies
         if not self.validate_dependencies():
             return False
-        
+
         try:
             # Start TUI view if available
             if self.tui_view:
                 self.tui_view.start()
-            
+
             # Start passive capture
             with self.start_passive_capture() as dumptool:
                 self.dumptool = dumptool
-                
+
                 # Record start time
                 self.statistics['start_time'] = time.time()
-                
+
                 # Start monitoring thread
                 self.start_monitoring_thread()
-                
+
                 # Calculate end time if duration is specified
                 end_time = None
                 if Configuration.pmkid_passive_duration > 0:
                     end_time = time.time() + Configuration.pmkid_passive_duration
-                
+
                 # Main statistics display loop
                 try:
                     while True:
                         # Display statistics
                         self.display_statistics()
-                        
+
                         # Check if duration timeout reached
                         if end_time and time.time() >= end_time:
                             if self.tui_view:
@@ -435,19 +435,19 @@ class AttackPassivePMKID:
                             else:
                                 Color.pl('\n{+} {G}Duration timeout reached{W}')
                             break
-                        
+
                         # Sleep briefly
                         time.sleep(1)
-                        
+
                 except KeyboardInterrupt:
                     if self.tui_view:
                         self.tui_view.add_log('Interrupted by user')
                     else:
                         Color.pl('\n{!} {O}Interrupted by user{W}')
-                
+
                 # Cleanup
                 self.cleanup()
-                
+
         except Exception as e:
             error_msg = f'Error during passive capture: {str(e)}'
             if self.tui_view:
@@ -466,13 +466,13 @@ class AttackPassivePMKID:
             # Stop TUI view if it was started
             if self.tui_view:
                 self.tui_view.stop()
-        
+
         return True
-    
+
     def cleanup(self):
         """
         Stop capture and perform final extraction.
-        
+
         Stops monitoring thread gracefully.
         Stops hcxdumptool process (handled by context manager).
         Performs final hash extraction from capture file.
@@ -483,7 +483,7 @@ class AttackPassivePMKID:
             self.tui_view.add_log('Cleaning up...')
         else:
             Color.pl('\n{+} {C}Cleaning up...{W}')
-        
+
         # Stop monitoring thread
         if self.monitor_thread:
             self.monitor_thread.stop()

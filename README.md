@@ -116,7 +116,6 @@ Second, only the latest versions of these programs are supported and must be ins
 * [`hostapd`](https://w1.fi/hostapd/): For creating rogue access points (v2.9+ required).
 * [`dnsmasq`](http://www.thekelleys.org.uk/dnsmasq/doc.html): For DHCP and DNS services (v2.80+ required).
 * [`wpa_supplicant`](https://w1.fi/wpa_supplicant/): For validating captured credentials (v2.9+ required).
-* **⚠️ LEGAL WARNING:** Evil Twin attacks require explicit written authorization. Unauthorized use is illegal and may result in criminal prosecution. See [Evil Twin Guide](docs/EVILTWIN_GUIDE.md) for complete legal requirements, usage instructions, and best practices.
 
 
 
@@ -950,7 +949,7 @@ Wifite2 is actively maintained and welcomes contributions! Here's how you can he
 * Create tutorials and guides for specific use cases
 * Translate documentation to other languages
 
-**Maintainer:** [@kimocoder](https://github.com/kimocoder)  
+**Maintainer:** [@kimocoder](https://github.com/kimocoder)
 **Original Author:** [@derv82](https://github.com/derv82)
 
 ---

@@ -53,12 +53,12 @@ class AttackMonitor:
         # Attack tracking
         # List of recent attack events (limited to last 100)
         self.attack_events = []
-        
+
         # Dictionary tracking networks under attack
-        # Format: {bssid: {'essid': str, 'count': int, 'last_seen': float, 
+        # Format: {bssid: {'essid': str, 'count': int, 'last_seen': float,
         #                  'first_seen': float, 'attack_types': {'deauth': int, 'disassoc': int}}}
         self.networks_under_attack = {}
-        
+
         # Dictionary tracking attacker MACs
         # Format: {mac: {'count': int, 'targets': set(), 'first_seen': float,
         #                'last_seen': float, 'attack_types': {'deauth': int, 'disassoc': int}}}
@@ -165,7 +165,7 @@ class AttackMonitor:
         try:
             # Extract frame type
             frame_type = frame_data.get('frame_type', '')
-            
+
             # Determine attack type based on frame type
             # 0x0c = Deauthentication (12 decimal)
             # 0x0a = Disassociation (10 decimal)
@@ -422,29 +422,6 @@ class AttackMonitor:
                 recent_events=self.attack_events
             )
 
-    def display_legal_warning(self):
-        """
-        Display legal warning about wireless monitoring.
-        
-        Warns users about legal requirements and authorization needs.
-        """
-        if self.tui_view:
-            self.tui_view.add_log('[bold red]⚠️  LEGAL WARNING ⚠️[/bold red]')
-            self.tui_view.add_log('[yellow]Wireless monitoring requires authorization.[/yellow]')
-            self.tui_view.add_log('[yellow]Only monitor networks you own or have permission to monitor.[/yellow]')
-            self.tui_view.add_log('[yellow]Unauthorized monitoring may be illegal in your jurisdiction.[/yellow]')
-        else:
-            Color.pl('')
-            Color.pl('{!} {R}═══════════════════════════════════════════════════════════{W}')
-            Color.pl('{!} {R}                    ⚠️  LEGAL WARNING ⚠️                    {W}')
-            Color.pl('{!} {R}═══════════════════════════════════════════════════════════{W}')
-            Color.pl('{!} {O}Wireless monitoring requires authorization.{W}')
-            Color.pl('{!} {O}Only monitor networks you own or have explicit permission to monitor.{W}')
-            Color.pl('{!} {O}Unauthorized monitoring may be illegal in your jurisdiction.{W}')
-            Color.pl('{!} {O}You are responsible for compliance with all applicable laws.{W}')
-            Color.pl('{!} {R}═══════════════════════════════════════════════════════════{W}')
-            Color.pl('')
-
     def run(self):
         """
         Main monitoring loop.
@@ -461,9 +438,6 @@ class AttackMonitor:
         Returns:
             bool: True if monitoring completed successfully
         """
-        # Display legal warning
-        self.display_legal_warning()
-        
         # Validate dependencies
         if not self.validate_dependencies():
             return False
