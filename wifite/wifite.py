@@ -51,11 +51,11 @@ class Wifite(object):
 
         # Automatic cleanup of old session files on startup
         self.cleanup_old_sessions()
-        
+
         # Initialize interface assignment storage
         self.interface_assignment = None
         self.available_interfaces = []
-        
+
         # Initialize interface manager for state tracking and cleanup (Task 10.4)
         from .util.interface_manager import InterfaceManager
         self.interface_manager = InterfaceManager()
@@ -1008,9 +1008,20 @@ class Wifite(object):
             Color.pl('')
 
         try:
+            # Create TUI controller if not in classic mode
+            tui_controller = None
+            if Configuration.use_tui:
+                try:
+                    from .ui.tui import TUIController
+                    tui_controller = TUIController()
+                except (ImportError, Exception) as e:
+                    # Fall back to classic mode if TUI fails to load
+                    Color.pl('{!} {O}Warning: TUI mode failed to load, using classic mode{W}')
+                    if Configuration.verbose > 0:
+                        Color.pl('{!} {O}TUI Error: %s{W}' % str(e))
+                    Configuration.use_tui = False
+
             # Create and run passive PMKID attack
-            # Pass TUI controller if TUI mode is enabled
-            tui_controller = self.tui_controller if Configuration.use_tui else None
             attack = AttackPassivePMKID(tui_controller=tui_controller)
             attack.run()
             

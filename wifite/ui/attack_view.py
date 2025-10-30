@@ -185,7 +185,7 @@ class AttackView:
         """
         # Create target info table
         table = Table(show_header=False, box=None, padding=(0, 1))
-        table.add_column("Label", style="bold cyan", width=12)
+        table.add_column("Label", style="bold white", width=12)
         table.add_column("Value", style="white")
 
         # ESSID
@@ -216,17 +216,17 @@ class AttackView:
         
         # Create a second column for encryption and power
         info_text = Text()
-        info_text.append("Encryption: ", style="bold cyan")
+        info_text.append("Encryption: ", style="bold white")
         info_text.append(enc_badge)
         info_text.append("  |  ", style="bright_black")
-        info_text.append("Power: ", style="bold cyan")
+        info_text.append("Power: ", style="bold white")
         
         # Power level
         power_dbm = self.target.power - 100 if self.target.power > 0 else self.target.power
         info_text.append(SignalStrengthBar.render(power_dbm))
 
         # Add resume indicator to title if this is a resumed session
-        title_text = f"[bold cyan]Target: {essid}[/bold cyan]"
+        title_text = f"[bold white]Target: {essid}[/bold white]"
         if self.session:
             title_text = f"[bold magenta]RESUMED[/bold magenta] | {title_text}"
 
@@ -234,7 +234,7 @@ class AttackView:
             table,
             title=title_text,
             subtitle=info_text,
-            border_style="cyan",
+            border_style="white",
             padding=(0, 1)
         )
 
@@ -288,7 +288,7 @@ class AttackView:
 
         return Panel(
             Align.center(footer),
-            border_style="blue",
+            border_style="white",
             padding=(0, 1)
         )
 
@@ -713,7 +713,7 @@ class PassivePMKIDAttackView(AttackView):
 
         # Build metrics
         metrics = {
-            'Networks Detected': f'[cyan]{self.networks_detected}[/cyan]',
+            'Networks Detected': f'[white]{self.networks_detected}[/white]',
             'PMKIDs Captured': f'[bold green]{self.pmkids_captured}[/bold green]' if self.pmkids_captured > 0 else f'[dim]{self.pmkids_captured}[/dim]',
             'Capture File Size': f'[yellow]{size_str}[/yellow]',
             'Last Extraction': f'[white]{extraction_str}[/white]',
@@ -785,7 +785,7 @@ class PassivePMKIDAttackView(AttackView):
         """
         # For passive mode, show general capture info instead of specific target
         table = Table(show_header=False, box=None, padding=(0, 1))
-        table.add_column("Label", style="bold cyan", width=18)
+        table.add_column("Label", style="bold white", width=18)
         table.add_column("Value", style="white")
 
         table.add_row("Mode:", "Passive PMKID Capture")
@@ -805,14 +805,14 @@ class PassivePMKIDAttackView(AttackView):
         else:
             table.add_row("Duration Limit:", "Infinite (Ctrl+C to stop)")
 
-        title_text = "[bold cyan]Passive PMKID Sniffing[/bold cyan]"
+        title_text = "[bold white]Passive PMKID Sniffing[/bold white]"
         if self.session:
             title_text = f"[bold magenta]RESUMED[/bold magenta] | {title_text}"
 
         return Panel(
             table,
             title=title_text,
-            border_style="cyan",
+            border_style="white",
             padding=(0, 1)
         )
 
@@ -1247,7 +1247,7 @@ class EvilTwinAttackView(AttackView):
                 # Calculate deauths per minute
                 elapsed = time.time() - self.attack_start_time
                 deauths_per_min = (self.deauths_sent / elapsed * 60) if elapsed > 0 else 0
-                metrics['Deauths Sent'] = f'[cyan]{self.deauths_sent:,}[/cyan] ([dim]{deauths_per_min:.1f}/min[/dim])'
+                metrics['Deauths Sent'] = f'[white]{self.deauths_sent:,}[/white] ([dim]{deauths_per_min:.1f}/min[/dim])'
             else:
                 metrics['Deauths Sent'] = f'[dim]0[/dim]'
             
@@ -1262,7 +1262,7 @@ class EvilTwinAttackView(AttackView):
         
         # Add timing metrics if available
         if self.time_to_first_client is not None:
-            metrics['Time to 1st Client'] = f'[cyan]{self.time_to_first_client:.1f}s[/cyan]'
+            metrics['Time to 1st Client'] = f'[white]{self.time_to_first_client:.1f}s[/white]'
         
         if self.time_to_first_credential is not None:
             metrics['Time to 1st Cred'] = f'[yellow]{self.time_to_first_credential:.1f}s[/yellow]'
@@ -1310,7 +1310,7 @@ class EvilTwinAttackView(AttackView):
         elif phase == "Failed":
             return f"[bold red]{indicator}[/bold red] {phase}"
         elif phase == "Running":
-            return f"[bold cyan]{indicator}[/bold cyan] {phase}"
+            return f"[bold white]{indicator}[/bold white] {phase}"
         elif phase in ["Stopping", "Cleaning up"]:
             return f"[yellow]{indicator}[/yellow] {phase}"
         else:
@@ -1365,7 +1365,7 @@ class EvilTwinAttackView(AttackView):
             
             # Create client table
             client_table = Table(show_header=True, box=None, padding=(0, 1))
-            client_table.add_column("MAC Address", style="cyan", width=17)
+            client_table.add_column("MAC Address", style="white", width=17)
             client_table.add_column("IP Address", style="green", width=15)
             client_table.add_column("Hostname", style="yellow")
             client_table.add_column("Duration", style="white", width=8)
@@ -1386,7 +1386,7 @@ class EvilTwinAttackView(AttackView):
             return Panel(
                 Group(base_panel.renderable, Text(), Text("Connected Clients:", style="bold"), client_table),
                 title="[bold]Progress[/bold]",
-                border_style="blue"
+                border_style="white"
             )
         
         return base_panel
@@ -1437,7 +1437,7 @@ class AttackMonitorView(AttackView):
                 'Deauth Frames': f'[red]{deauth_count:,}[/red]',
                 'Disassoc Frames': f'[yellow]{disassoc_count:,}[/yellow]',
                 'Total Attacks': f'[bold red]{total_attacks:,}[/bold red]',
-                'Networks Attacked': f'[cyan]{len(networks)}[/cyan]',
+                'Networks Attacked': f'[white]{len(networks)}[/white]',
                 'Unique Attackers': f'[magenta]{len(attackers)}[/magenta]'
             }
         })
@@ -1472,7 +1472,7 @@ class AttackMonitorView(AttackView):
         from ..config import Configuration
         
         table = Table(show_header=False, box=None, padding=(0, 1))
-        table.add_column("Label", style="bold cyan", width=18)
+        table.add_column("Label", style="bold white", width=18)
         table.add_column("Value", style="white")
 
         table.add_row("Mode:", "Attack Monitoring")
@@ -1532,7 +1532,7 @@ class AttackMonitorView(AttackView):
         # Add network list
         if len(self.networks_under_attack) > 0:
             sections.append(Text())
-            sections.append(Text("Networks Under Attack:", style="bold cyan"))
+            sections.append(Text("Networks Under Attack:", style="bold white"))
             sections.append(self._render_network_list())
         
         # Add attacker list
@@ -1544,7 +1544,7 @@ class AttackMonitorView(AttackView):
         return Panel(
             Group(*sections),
             title="[bold]Attack Monitoring[/bold]",
-            border_style="blue"
+            border_style="white"
         )
 
     def _render_event_log(self) -> Table:
@@ -1557,7 +1557,7 @@ class AttackMonitorView(AttackView):
         event_table = Table(show_header=True, box=None, padding=(0, 1))
         event_table.add_column("Time", style="white", width=8)
         event_table.add_column("Type", style="white", width=8)
-        event_table.add_column("Target", style="cyan", width=25)
+        event_table.add_column("Target", style="white", width=25)
         event_table.add_column("Attacker", style="magenta", width=17)
         
         # Show last 10 events
@@ -1594,7 +1594,7 @@ class AttackMonitorView(AttackView):
             Rich Table with network attack statistics
         """
         network_table = Table(show_header=True, box=None, padding=(0, 1))
-        network_table.add_column("ESSID", style="cyan", width=20)
+        network_table.add_column("ESSID", style="white", width=20)
         network_table.add_column("BSSID", style="white", width=17)
         network_table.add_column("Attacks", style="red", width=8, justify="right")
         network_table.add_column("Last Seen", style="yellow", width=8)
@@ -1640,7 +1640,7 @@ class AttackMonitorView(AttackView):
         attacker_table = Table(show_header=True, box=None, padding=(0, 1))
         attacker_table.add_column("Attacker MAC", style="magenta", width=17)
         attacker_table.add_column("Attacks", style="red", width=8, justify="right")
-        attacker_table.add_column("Targets", style="cyan", width=8, justify="right")
+        attacker_table.add_column("Targets", style="white", width=8, justify="right")
         
         # Sort attackers by attack count (descending) and take top 10
         sorted_attackers = sorted(

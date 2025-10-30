@@ -27,7 +27,7 @@ class AttackPMKID(Attack):
         self.pcapng_file = Configuration.temp('pmkid.pcapng')
         self.success = False
         self.timer = None
-        
+
         # Initialize TUI view if in TUI mode
         self.view = None
         if OutputManager.is_tui_mode():
@@ -137,7 +137,7 @@ class AttackPMKID(Attack):
                 Color.pl('{+} {D}Checking for existing PMKID for BSSID: {C}%s{W}' % self.target.bssid)
             if self.view:
                 self.view.add_log("Checking for existing PMKID hash...")
-            
+
             pmkid_file = AttackPMKID.get_existing_pmkid_file(self.target.bssid)
             if pmkid_file is not None:
                 if self.view:
@@ -169,7 +169,7 @@ class AttackPMKID(Attack):
         if WpaSecUploader.should_upload():
             if self.view:
                 self.view.add_log("Checking wpa-sec upload configuration...")
-            
+
             # Use the pcapng file if it exists, otherwise skip upload
             # Note: If only .22000 hash file exists, that's fine - wpa-sec doesn't accept hash files anyway
             if os.path.exists(self.pcapng_file):
@@ -187,8 +187,8 @@ class AttackPMKID(Attack):
             if self.view:
                 self.view.add_log("Skipping crack phase (--skip-crack flag)")
             return self._extracted_from_run_hashcat_44(
-                '{+} Not cracking pmkid because {C}skip-crack{W} was used{W}'
-            )
+                '{+} Not cracking pmkid because {C}skip-crack{W} was used{W}')
+
         # Crack it.
         if Process.exists(Hashcat.dependency_name):
             try:
@@ -217,15 +217,15 @@ class AttackPMKID(Attack):
         if self.view:
             self.view.start()
             self.view.set_attack_type("PMKID Attack")
-            
+
             # Handle hidden ESSID
             essid_display = self.target.essid if self.target.essid else "<hidden ESSID>"
             self.view.add_log(f"Starting PMKID attack on {essid_display} ({self.target.bssid})")
-            
+
             # Handle invalid channel
             channel_display = self.target.channel if self.target.channel and str(self.target.channel) != '-1' else "unknown"
             self.view.add_log(f"Channel: {channel_display}")
-        
+
         if self.do_airCRACK:
             self.run_aircrack()
         else:
@@ -379,7 +379,7 @@ class AttackPMKID(Attack):
                 elapsed = Configuration.pmkid_timeout - self.timer.remaining()
                 self.view.update_pmkid_status(False, attempts)
                 self.view.add_log(f"Waiting for PMKID... ({int(elapsed)}s / {Configuration.pmkid_timeout}s)")
-            
+
             Color.pattack('PMKID', self.target, 'CAPTURE', 'Waiting for PMKID ({C}%s{W})' % str(self.timer))
             time.sleep(1)
 
@@ -397,7 +397,7 @@ class AttackPMKID(Attack):
         if self.view:
             self.view.update_pmkid_status(True, attempts)
             self.view.add_log("Successfully captured PMKID!")
-        
+
         Color.clear_entire_line()
         Color.pattack('PMKID', self.target, 'CAPTURE', '{G}Captured PMKID{W}')
         return self.save_pmkid(pmkid_hash)
@@ -424,7 +424,7 @@ class AttackPMKID(Attack):
                 self.view.set_attack_type("PMKID Crack")
                 self.view.add_log(f"Starting PMKID crack with wordlist: {Configuration.wordlist}")
                 self.view.add_log("Running hashcat...")
-            
+
             Color.clear_entire_line()
             Color.pattack('PMKID', self.target, 'CRACK', 'Cracking PMKID using {C}%s{W} ...\n' % Configuration.wordlist)
             key = Hashcat.crack_pmkid(pmkid_file)
@@ -454,7 +454,7 @@ class AttackPMKID(Attack):
                     'Status': 'SUCCESS'
                 }
             })
-        
+
         Color.clear_entire_line()
         Color.pattack('PMKID', self.target, 'CRACKED', '{C}Key: {G}%s{W}' % key)
         self.crack_result = CrackResultPMKID(self.target.bssid, self.target.essid,
