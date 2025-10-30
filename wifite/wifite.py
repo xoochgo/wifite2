@@ -112,6 +112,11 @@ class Wifite(object):
             Configuration.get_monitor_mode_interface()
             self.passive_pmkid_capture()
 
+        elif Configuration.monitor_attacks:
+            # Wireless attack monitoring mode
+            Configuration.get_monitor_mode_interface()
+            self.monitor_wireless_attacks()
+
         else:
             Configuration.get_monitor_mode_interface()
             self.scan_and_attack()
@@ -1033,6 +1038,99 @@ class Wifite(object):
                 Color.pl('{!} {O}  • You have sufficient permissions (running as root){W}')
             else:
                 # In TUI mode, error is already logged by the attack
+                pass
+
+    def monitor_wireless_attacks(self):
+        """
+        Run wireless attack monitoring mode.
+        Passively monitors for deauthentication and disassociation attacks.
+        """
+        from .attack.attack_monitor import AttackMonitor
+
+        # Display startup messages
+        if not Configuration.use_tui:
+            Color.pl('')
+            Color.pl('{+} {C}Starting Wireless Attack Monitoring{W}')
+            Color.pl('{+} {O}This will passively monitor for deauth/disassoc attacks{W}')
+            Color.pl('{+} {D}Interface: {C}%s{W}' % Configuration.interface)
+            
+            # Display monitoring parameters
+            if Configuration.monitor_channel:
+                Color.pl('{+} {D}Channel: {C}%d{W}' % Configuration.monitor_channel)
+            elif Configuration.monitor_hop:
+                Color.pl('{+} {D}Channel: {C}Hopping (all 2.4GHz){W}')
+            else:
+                Color.pl('{+} {D}Channel: {C}Current{W}')
+            
+            if Configuration.monitor_duration and Configuration.monitor_duration > 0:
+                Color.pl('{+} {D}Duration: {C}%d seconds{W}' % Configuration.monitor_duration)
+            else:
+                Color.pl('{+} {D}Duration: {C}Infinite{W} (press Ctrl+C to stop)')
+            
+            if Configuration.monitor_log_file:
+                Color.pl('{+} {D}Log file: {C}%s{W}' % Configuration.monitor_log_file)
+            
+            Color.pl('')
+
+        try:
+            # Create TUI controller if not in classic mode
+            tui_controller = None
+            if Configuration.use_tui:
+                try:
+                    from .ui.tui import TUIController
+                    tui_controller = TUIController()
+                except (ImportError, Exception) as e:
+                    # Fall back to classic mode if TUI fails to load
+                    if Configuration.verbose > 0:
+                        Color.pl('{!} {O}Warning: TUI mode unavailable, falling back to classic mode{W}')
+                        Color.pl('{!} {D}%s{W}' % str(e))
+                    Configuration.use_tui = False
+
+            # Create attack monitor
+            monitor = AttackMonitor(tui_controller=tui_controller)
+            
+            # Validate dependencies before starting
+            if not monitor.validate_dependencies():
+                if not Configuration.use_tui:
+                    Color.pl('')
+                    Color.pl('{!} {R}Dependency validation failed{W}')
+                    Color.pl('{!} {O}Cannot start attack monitoring without required tools{W}')
+                return
+            
+            # Run the monitor
+            success = monitor.run()
+            
+            # Display final summary on exit
+            if not Configuration.use_tui and success:
+                Color.pl('')
+                Color.pl('{+} {G}Attack monitoring completed successfully{W}')
+
+        except KeyboardInterrupt:
+            if not Configuration.use_tui:
+                Color.pl('')
+                Color.pl('{!} {O}Attack monitoring interrupted by user{W}')
+                Color.pl('{+} {D}Gracefully shutting down...{W}')
+
+        except Exception as e:
+            if not Configuration.use_tui:
+                Color.pl('')
+                Color.pl('{!} {R}Error during attack monitoring:{W}')
+                Color.pl('{!} {R}%s{W}' % str(e))
+
+                if Configuration.verbose > 0:
+                    import traceback
+                    Color.pl('')
+                    Color.pl('{!} {D}Stack trace:{W}')
+                    Color.pl('{D}%s{W}' % traceback.format_exc())
+
+                Color.pl('')
+                Color.pl('{!} {O}Attack monitoring failed. Check that:{W}')
+                Color.pl('{!} {O}  • tshark is installed (apt install tshark){W}')
+                Color.pl('{!} {O}  • Your wireless interface supports monitor mode{W}')
+                Color.pl('{!} {O}  • You have sufficient permissions (running as root){W}')
+                Color.pl('{!} {O}  • The interface is not being used by other processes{W}')
+            else:
+                # In TUI mode, error is already logged by the monitor
                 pass
 
     def scan_and_attack(self):

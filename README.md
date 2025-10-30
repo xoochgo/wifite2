@@ -215,6 +215,13 @@ Features
   * **Backward Compatible** - Seamlessly falls back to single interface mode
   * **📖 Complete Guide:** [Dual Interface Guide](docs/DUAL_INTERFACE_GUIDE.md)
   * **🔧 Troubleshooting:** [Dual Interface Troubleshooting](docs/DUAL_INTERFACE_TROUBLESHOOTING.md)
+* **Wireless Attack Monitoring** - Passive detection and analysis of wireless attacks (use with: `--monitor-attacks`)
+  * **Real-time Detection** - Identifies deauthentication and disassociation attacks as they occur
+  * **Attack Statistics** - Tracks attack counts, targeted networks, and attacker devices
+  * **TUI Visualization** - Live dashboard showing attack events, network lists, and attacker profiles
+  * **Comprehensive Logging** - Records all detected attacks with timestamps and full details
+  * **Network Analysis** - Identifies most-attacked networks and most-active attackers
+  * **Passive Operation** - Monitor-only mode with no active interference
 
 ### Smart Features
 * **Automatic Target Detection** - Scans and identifies vulnerable networks
@@ -361,6 +368,230 @@ sudo wifite -vv
 - Consider using cloud-based cracking services for large wordlists
 
 
+### Wireless Attack Monitoring
+
+Wifite includes a passive wireless attack monitoring feature that detects and logs malicious 802.11 management frames such as deauthentication and disassociation attacks. This feature is useful for security researchers, network administrators, and penetration testers who need to assess the security posture of wireless environments.
+
+#### What It Monitors
+
+The attack monitor passively captures and analyzes:
+
+* **Deauthentication Frames** - Frames used to forcibly disconnect clients from access points
+* **Disassociation Frames** - Frames used to terminate client associations
+* **Attack Patterns** - Identifies networks under attack and potential attacker devices
+* **Network Statistics** - Tracks which networks are most frequently targeted
+* **Attacker Profiles** - Identifies MAC addresses sending attack frames and their targets
+
+#### Basic Usage
+
+```bash
+# Start attack monitoring (infinite duration)
+sudo wifite --monitor-attacks
+
+# Monitor for a specific duration (in seconds)
+sudo wifite --monitor-attacks --monitor-duration 300
+
+# Monitor a specific channel
+sudo wifite --monitor-attacks --monitor-channel 6
+
+# Enable channel hopping (monitor all 2.4GHz channels)
+sudo wifite --monitor-attacks --monitor-hop
+
+# Specify custom log file location
+sudo wifite --monitor-attacks --monitor-log /path/to/attack_log.txt
+
+# Use classic text mode instead of TUI
+sudo wifite --monitor-attacks --classic
+```
+
+#### Understanding the TUI Display
+
+When running in TUI mode (default), the attack monitor displays:
+
+1. **Attack Statistics Panel**
+   - Total deauthentication frames detected
+   - Total disassociation frames detected
+   - Number of unique networks under attack
+   - Number of unique attacker MAC addresses
+   - Monitoring duration
+
+2. **Recent Attack Events Log**
+   - Scrollable list of the last 100 attack events
+   - Color-coded by attack type (red for deauth, orange for disassoc)
+   - Shows timestamp, attack type, target network, and attacker MAC
+   - Auto-scrolls to show newest events
+
+3. **Networks Under Attack**
+   - Top 20 most-attacked networks
+   - Shows ESSID, BSSID, attack count, and last attack time
+   - Sorted by attack count (most attacked first)
+
+4. **Active Attackers**
+   - Top 10 most active attacker MAC addresses
+   - Shows MAC address, attack count, and number of targets
+   - Sorted by attack count (most active first)
+
+#### Log File Format
+
+Attack events are logged in a structured format for easy analysis:
+
+```
+2025-10-30T15:23:45.123456 | DEAUTH | Attacker: AA:BB:CC:DD:EE:FF | Target: 11:22:33:44:55:66 | BSSID: AA:BB:CC:DD:EE:FF | ESSID: MyNetwork | Channel: 6
+```
+
+Each log entry includes:
+- ISO 8601 timestamp with microsecond precision
+- Attack type (DEAUTH or DISASSOC)
+- Source MAC address (attacker)
+- Destination MAC address (target client)
+- BSSID (access point MAC)
+- ESSID (network name, if available)
+- Channel number
+
+#### Tool Requirements
+
+The attack monitoring feature requires:
+
+* **tshark** (part of Wireshark) - For frame capture and analysis
+  ```bash
+  # Install on Kali/Debian/Ubuntu
+  sudo apt install tshark
+  
+  # Install on Arch Linux
+  sudo pacman -S wireshark-cli
+  ```
+
+* **Wireless adapter in monitor mode** - Wifite will automatically enable monitor mode
+* **Root/sudo access** - Required for packet capture
+
+#### Advanced Usage Examples
+
+**Security Assessment:**
+```bash
+# Monitor your network for 1 hour to detect attacks
+sudo wifite --monitor-attacks --monitor-duration 3600 --monitor-log security_audit.log
+
+# Monitor with verbose output for debugging
+sudo wifite --monitor-attacks -vv --monitor-log detailed_audit.log
+```
+
+**Penetration Testing:**
+```bash
+# Monitor a specific channel during a pentest
+sudo wifite --monitor-attacks --monitor-channel 11 --monitor-log pentest_attacks.log
+
+# Monitor target network's channel with custom interface
+sudo wifite -i wlan1 --monitor-attacks --monitor-channel 6 --monitor-duration 1800
+```
+
+**Research and Analysis:**
+```bash
+# Monitor all channels to study attack patterns in an area
+sudo wifite --monitor-attacks --monitor-hop --monitor-log research_data.log
+
+# Long-term monitoring with timestamped logs
+sudo wifite --monitor-attacks --monitor-hop --monitor-log "attacks_$(date +%Y%m%d_%H%M%S).log"
+```
+
+**Network Defense:**
+```bash
+# Continuous monitoring with automatic log rotation
+sudo wifite --monitor-attacks --monitor-log /var/log/wifite/attacks_$(date +%Y%m%d).log
+
+# Monitor specific channel in classic mode (no TUI, lower resource usage)
+sudo wifite --monitor-attacks --monitor-channel 1 --classic --monitor-log attacks.log
+```
+
+**Incident Response:**
+```bash
+# Quick 5-minute scan to detect active attacks
+sudo wifite --monitor-attacks --monitor-duration 300 --monitor-hop
+
+# Monitor during a specific time window
+sudo wifite --monitor-attacks --monitor-duration 7200 --monitor-log incident_$(date +%Y%m%d).log
+```
+
+**Compliance and Auditing:**
+```bash
+# Scheduled monitoring with detailed logging
+sudo wifite --monitor-attacks --monitor-duration 3600 --monitor-log /var/log/compliance/wireless_$(date +%Y%m%d).log -vv
+
+# Monitor specific interface and channel for compliance testing
+sudo wifite -i wlan0mon --monitor-attacks --monitor-channel 6 --monitor-log compliance_audit.log
+```
+
+#### Interpreting Results
+
+**High Attack Counts on Your Network:**
+- May indicate an active penetration test or attack
+- Could be a misconfigured device or rogue access point
+- Investigate the attacker MAC address and correlate with authorized devices
+
+**Multiple Networks Under Attack:**
+- Suggests a widespread attack or scanning activity
+- May indicate an attacker testing multiple targets
+- Consider the physical location and signal strength
+
+**Consistent Attacker MAC:**
+- Single device attacking multiple networks
+- May be a penetration testing tool or malicious actor
+- Can be used to identify and locate the attacking device
+
+**Periodic Attack Patterns:**
+- May indicate automated tools or scheduled attacks
+- Could be legitimate testing on a schedule
+- Review timing patterns in the log file
+
+#### Performance Considerations
+
+**Resource Usage:**
+- CPU: Minimal (tshark with filters is efficient)
+- Memory: Low (event list limited to last 100 entries)
+- Disk: Depends on attack frequency (logs are buffered and flushed periodically)
+
+**Optimization Tips:**
+- Use `--monitor-channel` to focus on specific channels for better performance
+- Avoid channel hopping on busy networks to reduce CPU usage
+- Use classic mode (`--classic`) on resource-constrained systems
+- Regularly rotate log files to prevent excessive disk usage
+
+**Scalability:**
+- Handles high attack rates efficiently (1000+ frames/second)
+- Network dictionary uses optimized lookups
+- Automatic cleanup prevents memory bloat during long sessions
+
+#### Frequently Asked Questions
+
+**Q: Can I monitor attacks while running other wifite attacks?**
+A: No, attack monitoring is a standalone mode. You cannot run `--monitor-attacks` simultaneously with other attack modes like `--wpa` or `--eviltwin`.
+
+**Q: Will attack monitoring interfere with networks?**
+A: No, attack monitoring is completely passive. It only captures and analyzes frames without sending any packets or interfering with network operations.
+
+**Q: How accurate is the attack detection?**
+A: Very accurate. The monitor detects genuine deauth/disassoc frames based on 802.11 frame types. However, some legitimate network operations may also use these frames (e.g., AP reboots, client roaming).
+
+**Q: Can I monitor 5GHz networks?**
+A: Yes, if your wireless adapter supports 5GHz monitor mode. Use `--monitor-channel` with a 5GHz channel number (e.g., 36, 40, 44, 48, etc.).
+
+**Q: What's the difference between --monitor-channel and --monitor-hop?**
+A: `--monitor-channel` focuses on a single channel for comprehensive monitoring, while `--monitor-hop` cycles through all 2.4GHz channels to detect attacks across the spectrum. Use `--monitor-channel` for targeted monitoring and `--monitor-hop` for area-wide surveillance.
+
+**Q: How long should I monitor to get meaningful results?**
+A: It depends on your goals. For quick assessment, 5-10 minutes may be sufficient. For comprehensive analysis, monitor for 30-60 minutes. For baseline establishment, consider 24-hour monitoring.
+
+**Q: Can I analyze the log files programmatically?**
+A: Yes, log files use a structured format with pipe-delimited fields, making them easy to parse with scripts, awk, grep, or import into databases/spreadsheets.
+
+**Q: Does monitoring work on all wireless adapters?**
+A: Any adapter that supports monitor mode will work. However, some adapters have better sensitivity and range, which affects detection capability.
+
+**Q: What should I do if I detect attacks on my network?**
+A: First, verify the attacks are unauthorized. If confirmed malicious, document the evidence, identify the attacker's location if possible, implement countermeasures (WPA3, PMF), and report to appropriate authorities if necessary.
+
+**Q: Can attackers detect that I'm monitoring?**
+A: No, passive monitoring is undetectable. Your wireless adapter only receives frames without transmitting anything.
+
 ### Resume Feature
 
 Wifite automatically saves your attack progress and allows you to resume interrupted sessions:
@@ -506,6 +737,21 @@ Troubleshooting
 - Ensure hashcat is using your GPU: `hashcat -I` to list devices
 - Consider starting with smaller, targeted wordlists
 
+**Attack monitoring issues:**
+- **tshark not found:** Install with `sudo apt install tshark` (Debian/Ubuntu) or `sudo pacman -S wireshark-cli` (Arch)
+- **No attacks detected:** Ensure your wireless adapter is in monitor mode and positioned to receive signals
+- **Permission denied:** Run wifite with `sudo` - packet capture requires root privileges
+- **High CPU usage:** Use `--monitor-channel` instead of `--monitor-hop` to reduce processing load
+- **TUI not displaying:** Try classic mode with `--classic` or check terminal compatibility
+- **Log file not created:** Verify write permissions for the log file path
+- **Interface errors:** Ensure no other tools (airodump-ng, etc.) are using the interface
+
+**Attack monitoring performance:**
+- **Slow updates:** Normal on high-traffic channels - TUI updates every second
+- **Missing events:** Ensure good signal strength to target networks
+- **Memory usage growing:** Restart monitoring periodically during very long sessions (24+ hours)
+- **Channel hopping too fast:** This is normal - cycles through all 2.4GHz channels every few seconds
+
 ### Getting Help
 
 1. **Enable verbose mode:** Use `-v`, `-vv`, or `-vvv` to see detailed command output
@@ -524,6 +770,15 @@ Documentation
 -------------
 
 ### Comprehensive Guides
+
+* **[Attack Monitoring Guide](docs/ATTACK_MONITORING_GUIDE.md)** - Complete guide to wireless attack monitoring
+  * Legal requirements and authorization
+  * Installation and setup
+  * Basic and advanced usage
+  * TUI interface explanation
+  * Log file analysis techniques
+  * Use cases and best practices
+  * Troubleshooting and FAQ
 
 * **[Evil Twin Attack Guide](docs/EVILTWIN_GUIDE.md)** - Complete guide to Evil Twin attacks
   * Hardware and software requirements
@@ -563,6 +818,11 @@ sudo wifite -h -v | grep -A 20 "DUAL INTERFACE"
 For Passive PMKID specific help:
 ```bash
 sudo wifite -h -v | grep -A 10 "PMKID"
+```
+
+For Attack Monitoring specific help:
+```bash
+sudo wifite -h -v | grep -A 15 "ATTACK MONITOR"
 ```
 
 

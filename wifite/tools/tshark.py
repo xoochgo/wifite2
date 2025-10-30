@@ -194,6 +194,107 @@ class Tshark(Dependency):
                 t.wps = WPSState.NONE
 
 
+class TsharkMonitor:
+    """
+    Wrapper for tshark in monitoring mode for attack detection.
+    Captures deauth and disassoc frames in real-time.
+    """
+    
+    def __init__(self, interface, channel=None):
+        """
+        Initialize TsharkMonitor.
+        
+        Args:
+            interface: Wireless interface to monitor
+            channel: Optional channel to monitor (None = current channel)
+        """
+        self.interface = interface
+        self.channel = channel
+        self.proc = None
+    
+    def start(self):
+        """
+        Start tshark with filters for deauth/disassoc frames.
+        
+        Filter: wlan.fc.type_subtype == 0x0c || wlan.fc.type_subtype == 0x0a
+        - 0x0c = Deauthentication
+        - 0x0a = Disassociation
+        
+        Returns:
+            Process object for the tshark process
+        """
+        import subprocess
+        
+        command = [
+            'tshark',
+            '-i', self.interface,
+            '-l',  # Line buffered output
+            '-T', 'fields',
+            '-e', 'frame.time_epoch',
+            '-e', 'wlan.fc.type_subtype',
+            '-e', 'wlan.sa',  # Source address
+            '-e', 'wlan.da',  # Destination address
+            '-e', 'wlan.bssid',
+            '-e', 'wlan_radio.channel',
+            '-Y', '(wlan.fc.type_subtype == 0x0c) || (wlan.fc.type_subtype == 0x0a)'
+        ]
+        
+        self.proc = Process(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        return self.proc
+    
+    def read_frame(self):
+        """
+        Read and parse next frame from tshark output.
+        
+        Returns:
+            Dictionary with frame data or None if no frame available:
+            {
+                'timestamp': float,
+                'frame_type': str,
+                'source_mac': str,
+                'dest_mac': str,
+                'bssid': str,
+                'channel': str
+            }
+        """
+        if not self.proc or not self.proc.pid or not self.proc.pid.stdout:
+            return None
+        
+        try:
+            line = self.proc.pid.stdout.readline()
+            if not line:
+                return None
+            
+            # Decode if bytes
+            if isinstance(line, bytes):
+                line = line.decode('utf-8', errors='ignore')
+            
+            line = line.strip()
+            if not line:
+                return None
+            
+            fields = line.split('\t')
+            if len(fields) < 5:
+                return None
+            
+            return {
+                'timestamp': float(fields[0]) if fields[0] else 0.0,
+                'frame_type': fields[1] if len(fields) > 1 else '',
+                'source_mac': fields[2] if len(fields) > 2 else '',
+                'dest_mac': fields[3] if len(fields) > 3 else '',
+                'bssid': fields[4] if len(fields) > 4 else '',
+                'channel': fields[5] if len(fields) > 5 else ''
+            }
+        except Exception:
+            return None
+    
+    def stop(self):
+        """Stop tshark process gracefully."""
+        if self.proc:
+            self.proc.interrupt()
+            self.proc = None
+
+
 if __name__ == '__main__':
     test_file = './tests/files/contains_wps_network.cap'
 

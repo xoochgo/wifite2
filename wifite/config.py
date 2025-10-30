@@ -108,6 +108,12 @@ class Configuration(object):
     wpasec_timeout = None
     wpasec_email = None
     wpasec_remove_after_upload = None
+    # Attack monitoring settings
+    monitor_attacks = None
+    monitor_duration = None
+    monitor_log_file = None
+    monitor_channel = None
+    monitor_hop = None
 
     @classmethod
     def initialize(cls, load_interface=True):
@@ -214,7 +220,7 @@ class Configuration(object):
         cls.use_pmkid_only = False  # Only use PMKID Capture+Crack attack
         cls.pmkid_timeout = 300  # Time to wait for PMKID capture
         cls.dont_use_pmkid = False  # Don't use PMKID attack
-        
+
         # Passive PMKID capture variables
         cls.pmkid_passive = False  # Enable passive PMKID capture mode
         cls.pmkid_passive_duration = 0  # Duration for passive capture (0 = infinite)
@@ -298,6 +304,13 @@ class Configuration(object):
         cls.wpasec_email = None  # Optional email for notifications
         cls.wpasec_remove_after_upload = False  # Remove capture file after successful upload
 
+        # Attack monitoring settings
+        cls.monitor_attacks = False  # Enable wireless attack monitoring mode
+        cls.monitor_duration = 0  # Duration for monitoring in seconds (0 = infinite)
+        cls.monitor_log_file = None  # Log file path for attack events
+        cls.monitor_channel = None  # Specific channel to monitor (None = current)
+        cls.monitor_hop = False  # Enable channel hopping during monitoring
+
         # A list to cache all checked commands (e.g. `which hashcat` will execute only once)
         cls.existing_commands = {}
 
@@ -328,6 +341,7 @@ class Configuration(object):
         cls.parse_wps_args(args)
         cls.parse_pmkid_args(args)
         cls.parse_eviltwin_args(args)
+        cls.parse_attack_monitor_args(args)
         cls.parse_dual_interface_args(args)
         cls.parse_wpasec_args(args)
         cls.parse_encryption()
@@ -369,6 +383,10 @@ class Configuration(object):
         # Validate Evil Twin configuration
         if cls.use_eviltwin:
             cls._validate_eviltwin_config()
+
+        # Validate attack monitoring configuration
+        if cls.monitor_attacks:
+            cls._validate_attack_monitor_config()
 
         # Validate wpa-sec configuration
         if cls.wpasec_enabled:
@@ -435,22 +453,66 @@ class Configuration(object):
         Color.pl('{+} Found {G}%d{W} AP-capable interface(s)' % len(ap_interfaces))
 
     @classmethod
+    def _validate_attack_monitor_config(cls):
+        """Validate attack monitoring configuration settings."""
+        from .tools.tshark import Tshark
+
+        # Validate tshark is available
+        if not Tshark.exists():
+            Color.pl('{!} {R}Error: tshark not found{W}')
+            Color.pl('{!} {O}Attack monitoring requires tshark for frame capture{W}')
+            Color.pl('{!} {O}Install with:{W} {C}apt install tshark{W} or {C}yum install wireshark{W}')
+            raise RuntimeError('tshark is required for attack monitoring')
+
+        # Validate duration
+        if cls.monitor_duration < 0:
+            Color.pl('{!} {R}Error: Invalid monitoring duration {O}%d{W}' % cls.monitor_duration)
+            raise ValueError('Monitoring duration must be 0 (infinite) or positive')
+
+        # Validate channel
+        if cls.monitor_channel is not None:
+            if cls.monitor_channel < 1 or cls.monitor_channel > 165:
+                Color.pl('{!} {R}Error: Invalid channel {O}%d{W}' % cls.monitor_channel)
+                Color.pl('{!} {O}Valid channels: 1-14 (2.4GHz), 36-165 (5GHz){W}')
+                raise ValueError('Invalid channel number')
+
+        # Validate channel and hop are not both set
+        if cls.monitor_channel and cls.monitor_hop:
+            Color.pl('{!} {R}Error: Cannot specify both --monitor-channel and --monitor-hop{W}')
+            raise ValueError('Cannot use both specific channel and channel hopping')
+
+        # Validate log file path if specified
+        if cls.monitor_log_file:
+            import os
+            log_dir = os.path.dirname(cls.monitor_log_file)
+            if log_dir and not os.path.exists(log_dir):
+                try:
+                    os.makedirs(log_dir)
+                    Color.pl('{+} Created log directory: {G}%s{W}' % log_dir)
+                except OSError as e:
+                    Color.pl('{!} {R}Error: Cannot create log directory {O}%s{W}: %s' % (log_dir, str(e)))
+                    raise ValueError('Invalid log file path')
+
+        if cls.verbose > 0:
+            Color.pl('{+} {G}Attack monitoring configuration validated{W}')
+
+    @classmethod
     def _validate_wpasec_config(cls):
         """
         Validate wpa-sec configuration settings.
-        
+
         Performs validation checks on wpa-sec configuration:
         - API key presence (required when wpa-sec is enabled)
         - API key format (minimum 8 characters, alphanumeric with hyphens/underscores)
         - API key character validation
-        
+
         Raises:
             RuntimeError: If validation fails with descriptive error message
-            
+
         Side Effects:
             - Displays error messages to user via Color.pl()
             - Provides helpful hints for fixing configuration issues
-            
+
         Example:
             >>> Configuration.wpasec_enabled = True
             >>> Configuration.wpasec_api_key = "abc123"
@@ -465,7 +527,7 @@ class Configuration(object):
             if len(cls.wpasec_api_key) < 8:
                 Color.pl('{!} {R}Error: wpa-sec API key must be at least 8 characters{W}')
                 raise RuntimeError('Invalid wpa-sec API key: too short')
-            
+
             # Check if API key contains only valid characters (alphanumeric and common special chars)
             if not re.match(r'^[a-zA-Z0-9_\-]+$', cls.wpasec_api_key):
                 Color.pl('{!} {R}Error: wpa-sec API key contains invalid characters{W}')
@@ -486,7 +548,7 @@ class Configuration(object):
                 r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # ...or ip
                 r'(?::\d+)?'  # optional port
                 r'(?:/?|[/?]\S+)$', re.IGNORECASE)
-            
+
             if not url_pattern.match(cls.wpasec_url):
                 Color.pl('{!} {R}Error: Invalid wpa-sec URL format: {O}%s{W}' % cls.wpasec_url)
                 Color.pl('{!} {O}URL must start with http:// or https://{W}')
@@ -497,7 +559,7 @@ class Configuration(object):
             if not isinstance(cls.wpasec_timeout, int) or cls.wpasec_timeout <= 0:
                 Color.pl('{!} {R}Error: wpa-sec timeout must be a positive integer{W}')
                 raise RuntimeError('Invalid wpa-sec timeout value')
-            
+
             if cls.wpasec_timeout < 10:
                 Color.pl('{!} {O}Warning: wpa-sec timeout is very short ({G}%d{O} seconds){W}' % cls.wpasec_timeout)
                 Color.pl('{!} {O}Uploads may fail due to insufficient time{W}')
@@ -835,17 +897,16 @@ class Configuration(object):
         if args.dont_use_pmkid:
             cls.dont_use_pmkid = True
             Color.pl('{+} {C}option:{W} will NOT use {C}PMKID{W} attack on WPA networks')
-        
+
         # Passive PMKID capture arguments
         if args.pmkid_passive:
             cls.pmkid_passive = True
             Color.pl('{+} {C}option:{W} {G}passive PMKID capture mode{W} enabled')
-            Color.pl('{!} {R}WARNING:{W} Passive monitoring requires proper authorization')
-        
+
         if args.pmkid_passive_duration:
             cls.pmkid_passive_duration = args.pmkid_passive_duration
             Color.pl('{+} {C}option:{W} passive capture duration: {G}%d seconds{W}' % args.pmkid_passive_duration)
-        
+
         if args.pmkid_passive_interval:
             cls.pmkid_passive_interval = args.pmkid_passive_interval
             Color.pl('{+} {C}option:{W} passive capture extraction interval: {G}%d seconds{W}' % args.pmkid_passive_interval)
@@ -920,6 +981,40 @@ class Configuration(object):
                 Color.pl('{!} {O}Warning: Could not detect interface capabilities: %s{W}' % str(e))
 
     @classmethod
+    def parse_attack_monitor_args(cls, args):
+        """Parse wireless attack monitoring-specific arguments"""
+        if hasattr(args, 'monitor_attacks') and args.monitor_attacks:
+            cls.monitor_attacks = True
+            Color.pl('{+} {C}option:{W} {G}wireless attack monitoring mode{W} enabled')
+
+        if hasattr(args, 'monitor_duration') and args.monitor_duration:
+            cls.monitor_duration = args.monitor_duration
+            if args.monitor_duration > 0:
+                Color.pl('{+} {C}option:{W} monitoring duration: {G}%d seconds{W}' % args.monitor_duration)
+            else:
+                Color.pl('{+} {C}option:{W} monitoring duration: {G}infinite{W}')
+
+        if hasattr(args, 'monitor_log_file') and args.monitor_log_file:
+            cls.monitor_log_file = args.monitor_log_file
+            Color.pl('{+} {C}option:{W} attack log file: {G}%s{W}' % args.monitor_log_file)
+
+        if hasattr(args, 'monitor_channel') and args.monitor_channel:
+            cls.monitor_channel = args.monitor_channel
+            # Validate channel number
+            if cls.monitor_channel < 1 or cls.monitor_channel > 165:
+                Color.pl('{!} {R}Error: Invalid channel {O}%d{W}' % cls.monitor_channel)
+                raise ValueError('Invalid channel number for attack monitoring')
+            Color.pl('{+} {C}option:{W} monitoring channel: {G}%d{W}' % args.monitor_channel)
+
+        if hasattr(args, 'monitor_hop') and args.monitor_hop:
+            cls.monitor_hop = True
+            Color.pl('{+} {C}option:{W} channel hopping {G}enabled{W} (all 2.4GHz channels)')
+            # Validate that both channel and hop are not set
+            if cls.monitor_channel:
+                Color.pl('{!} {R}Error: Cannot specify both --monitor-channel and --monitor-hop{W}')
+                raise ValueError('Cannot use both specific channel and channel hopping')
+
+    @classmethod
     def parse_dual_interface_args(cls, args):
         """Parses dual interface-specific arguments"""
         # Check if dual interface mode is explicitly enabled
@@ -969,7 +1064,7 @@ class Configuration(object):
     def parse_wpasec_args(cls, args):
         """
         Parse wpa-sec upload-specific command-line arguments.
-        
+
         Extracts and sets wpa-sec configuration from parsed arguments including:
         - API key (with masking for security)
         - Auto-upload mode
@@ -977,15 +1072,15 @@ class Configuration(object):
         - Connection timeout
         - Notification email
         - File removal after upload
-        
-        Args:
+
+        Args:0
             args: Parsed command-line arguments object from argparse
-            
+
         Side Effects:
             - Sets class variables for wpa-sec configuration
             - Displays configuration messages to user via Color.pl()
             - Automatically enables wpasec_enabled if API key is provided
-            
+
         Example:
             >>> Configuration.parse_wpasec_args(parsed_args)
             {+} option: wpa-sec API key: abc1****
@@ -1151,12 +1246,12 @@ class Configuration(object):
         code = 0
         cls.delete_temp()
         Macchanger.reset_if_changed()
-        
+
         # Clean up managed interfaces (Task 10.4)
         try:
             from .util.interface_manager import InterfaceManager
             from .util.logger import log_info, log_debug
-            
+
             # Check if we have an interface manager instance to clean up
             if hasattr(cls, 'interface_manager') and cls.interface_manager is not None:
                 log_info('Config', 'Cleaning up managed interfaces')
@@ -1165,7 +1260,7 @@ class Configuration(object):
         except Exception as e:
             from .util.logger import log_error
             log_error('Config', f'Error during interface cleanup: {e}', e)
-        
+
         from .tools.airmon import Airmon
         if cls.interface is not None and Airmon.base_interface is not None:
             if not cls.daemon:

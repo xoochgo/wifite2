@@ -1390,3 +1390,273 @@ class EvilTwinAttackView(AttackView):
             )
         
         return base_panel
+
+
+
+class AttackMonitorView(AttackView):
+    """Specialized view for wireless attack monitoring."""
+
+    def __init__(self, tui_controller, target=None, session=None, target_state=None):
+        # For attack monitoring, target might be None since we're monitoring all networks
+        super().__init__(tui_controller, target, session, target_state)
+        self.attack_type = "Wireless Attack Monitoring"
+        self.deauth_count = 0
+        self.disassoc_count = 0
+        self.networks_under_attack = {}
+        self.attacker_macs = {}
+        self.recent_events = []  # Last 100 events
+        self.monitor_channel = None
+        self.monitor_hop = False
+
+    def update_attack_statistics(self, deauth_count, disassoc_count, 
+                                 networks, attackers, recent_events):
+        """
+        Update attack monitoring statistics.
+
+        Args:
+            deauth_count: Total deauth frames detected
+            disassoc_count: Total disassoc frames detected
+            networks: Dict of networks under attack
+            attackers: Dict of attacker MACs
+            recent_events: List of recent attack events
+        """
+        self.deauth_count = deauth_count
+        self.disassoc_count = disassoc_count
+        self.networks_under_attack = networks
+        self.attacker_macs = attackers
+        self.recent_events = recent_events[-100:]  # Keep last 100
+
+        total_attacks = deauth_count + disassoc_count
+        
+        status = f"Monitoring... ({total_attacks:,} attacks detected)"
+        
+        self.update_progress({
+            'progress': 0.5,  # Indeterminate
+            'status': status,
+            'metrics': {
+                'Deauth Frames': f'[red]{deauth_count:,}[/red]',
+                'Disassoc Frames': f'[yellow]{disassoc_count:,}[/yellow]',
+                'Total Attacks': f'[bold red]{total_attacks:,}[/bold red]',
+                'Networks Attacked': f'[cyan]{len(networks)}[/cyan]',
+                'Unique Attackers': f'[magenta]{len(attackers)}[/magenta]'
+            }
+        })
+
+    def set_monitor_channel(self, channel):
+        """
+        Set the monitoring channel.
+
+        Args:
+            channel: Channel number or None for current
+        """
+        self.monitor_channel = channel
+        self._render()
+
+    def set_channel_hopping(self, enabled):
+        """
+        Set channel hopping status.
+
+        Args:
+            enabled: Whether channel hopping is enabled
+        """
+        self.monitor_hop = enabled
+        self._render()
+
+    def _render_target_info(self) -> Panel:
+        """
+        Override to show monitoring info instead of target.
+
+        Returns:
+            Rich Panel with monitoring information
+        """
+        from ..config import Configuration
+        
+        table = Table(show_header=False, box=None, padding=(0, 1))
+        table.add_column("Label", style="bold cyan", width=18)
+        table.add_column("Value", style="white")
+
+        table.add_row("Mode:", "Attack Monitoring")
+        table.add_row("Interface:", Configuration.interface or "Unknown")
+        
+        if self.monitor_channel:
+            table.add_row("Channel:", str(self.monitor_channel))
+        elif self.monitor_hop:
+            table.add_row("Channel:", "Hopping (all 2.4GHz)")
+        else:
+            table.add_row("Channel:", "Current")
+
+        elapsed_time = int(time.time() - self.attack_start_time)
+        elapsed_str = f"{elapsed_time // 60}m {elapsed_time % 60}s" if elapsed_time >= 60 else f"{elapsed_time}s"
+        table.add_row("Duration:", elapsed_str)
+
+        if hasattr(Configuration, 'monitor_duration') and Configuration.monitor_duration is not None and Configuration.monitor_duration > 0:
+            limit_str = f"{Configuration.monitor_duration // 60}m {Configuration.monitor_duration % 60}s" if Configuration.monitor_duration >= 60 else f"{Configuration.monitor_duration}s"
+            table.add_row("Duration Limit:", limit_str)
+
+        return Panel(
+            table,
+            title="[bold red]Wireless Attack Monitor[/bold red]",
+            border_style="red",
+            padding=(0, 1)
+        )
+
+    def _render_progress(self) -> Panel:
+        """
+        Override progress rendering to include attack event log, network list, and attacker list.
+
+        Returns:
+            Rich Panel with attack monitoring information
+        """
+        from rich.console import Group
+        
+        # Get base progress panel
+        elapsed_time = int(time.time() - self.attack_start_time)
+        base_panel = ProgressPanel.render(
+            attack_type=self.attack_type,
+            elapsed_time=elapsed_time,
+            progress_percent=self.progress_percent,
+            status_message=self.status_message,
+            metrics=self.metrics,
+            total_time=self.total_time
+        )
+        
+        # Create sections for event log, networks, and attackers
+        sections = [base_panel.renderable]
+        
+        # Add attack event log
+        if len(self.recent_events) > 0:
+            sections.append(Text())
+            sections.append(Text("Recent Attack Events:", style="bold yellow"))
+            sections.append(self._render_event_log())
+        
+        # Add network list
+        if len(self.networks_under_attack) > 0:
+            sections.append(Text())
+            sections.append(Text("Networks Under Attack:", style="bold cyan"))
+            sections.append(self._render_network_list())
+        
+        # Add attacker list
+        if len(self.attacker_macs) > 0:
+            sections.append(Text())
+            sections.append(Text("Active Attackers:", style="bold magenta"))
+            sections.append(self._render_attacker_list())
+        
+        return Panel(
+            Group(*sections),
+            title="[bold]Attack Monitoring[/bold]",
+            border_style="blue"
+        )
+
+    def _render_event_log(self) -> Table:
+        """
+        Render attack event log.
+
+        Returns:
+            Rich Table with recent attack events
+        """
+        event_table = Table(show_header=True, box=None, padding=(0, 1))
+        event_table.add_column("Time", style="white", width=8)
+        event_table.add_column("Type", style="white", width=8)
+        event_table.add_column("Target", style="cyan", width=25)
+        event_table.add_column("Attacker", style="magenta", width=17)
+        
+        # Show last 10 events
+        for event in self.recent_events[-10:]:
+            # Format timestamp
+            event_time = time.strftime("%H:%M:%S", time.localtime(event.get('timestamp', 0)))
+            
+            # Color code attack type
+            attack_type = event.get('type', 'unknown')
+            if attack_type == 'deauth':
+                type_str = "[red]Deauth[/red]"
+            elif attack_type == 'disassoc':
+                type_str = "[yellow]Disassoc[/yellow]"
+            else:
+                type_str = attack_type
+            
+            # Format target (ESSID + BSSID)
+            essid = event.get('essid', '<hidden>')
+            bssid = event.get('bssid', 'Unknown')
+            target_str = f"{essid[:15]} ({bssid})" if essid else bssid
+            
+            # Attacker MAC
+            attacker = event.get('source_mac', 'Unknown')
+            
+            event_table.add_row(event_time, type_str, target_str, attacker)
+        
+        return event_table
+
+    def _render_network_list(self) -> Table:
+        """
+        Render list of networks under attack.
+
+        Returns:
+            Rich Table with network attack statistics
+        """
+        network_table = Table(show_header=True, box=None, padding=(0, 1))
+        network_table.add_column("ESSID", style="cyan", width=20)
+        network_table.add_column("BSSID", style="white", width=17)
+        network_table.add_column("Attacks", style="red", width=8, justify="right")
+        network_table.add_column("Last Seen", style="yellow", width=8)
+        
+        # Sort networks by attack count (descending) and take top 20
+        sorted_networks = sorted(
+            self.networks_under_attack.items(),
+            key=lambda x: x[1].get('count', 0),
+            reverse=True
+        )[:20]
+        
+        current_time = time.time()
+        for bssid, network_info in sorted_networks:
+            essid = network_info.get('essid', '<hidden>')
+            attack_count = network_info.get('count', 0)
+            last_seen = network_info.get('last_seen', 0)
+            
+            # Calculate time since last attack
+            time_diff = int(current_time - last_seen)
+            if time_diff < 60:
+                last_seen_str = f"{time_diff}s ago"
+            elif time_diff < 3600:
+                last_seen_str = f"{time_diff // 60}m ago"
+            else:
+                last_seen_str = f"{time_diff // 3600}h ago"
+            
+            network_table.add_row(
+                essid[:20] if essid else '<hidden>',
+                bssid,
+                f"{attack_count:,}",
+                last_seen_str
+            )
+        
+        return network_table
+
+    def _render_attacker_list(self) -> Table:
+        """
+        Render list of attacker MACs.
+
+        Returns:
+            Rich Table with attacker statistics
+        """
+        attacker_table = Table(show_header=True, box=None, padding=(0, 1))
+        attacker_table.add_column("Attacker MAC", style="magenta", width=17)
+        attacker_table.add_column("Attacks", style="red", width=8, justify="right")
+        attacker_table.add_column("Targets", style="cyan", width=8, justify="right")
+        
+        # Sort attackers by attack count (descending) and take top 10
+        sorted_attackers = sorted(
+            self.attacker_macs.items(),
+            key=lambda x: x[1].get('count', 0),
+            reverse=True
+        )[:10]
+        
+        for mac, attacker_info in sorted_attackers:
+            attack_count = attacker_info.get('count', 0)
+            target_count = len(attacker_info.get('targets', set()))
+            
+            attacker_table.add_row(
+                mac,
+                f"{attack_count:,}",
+                str(target_count)
+            )
+        
+        return attacker_table

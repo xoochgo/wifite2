@@ -239,6 +239,7 @@ against the real AP and captures valid passwords.
         self._add_wps_args(parser.add_argument_group(Color.s('{C}WPS{W}')))
         self._add_pmkid_args(parser.add_argument_group(Color.s('{C}PMKID{W}')))
         self._add_eviltwin_args(parser.add_argument_group(Color.s('{C}EVIL TWIN{W}')))
+        self._add_attack_monitor_args(parser.add_argument_group(Color.s('{C}ATTACK MONITORING{W}')))
         self._add_wpasec_args(parser.add_argument_group(Color.s('{C}WPA-SEC UPLOAD{W}')))
         self._add_command_args(parser.add_argument_group(Color.s('{C}COMMANDS{W}')))
 
@@ -460,7 +461,6 @@ against the real AP and captures valid passwords.
                           action='store_true',
                           dest='use_eviltwin',
                           help=Color.s('Use the {C}Evil Twin{W} attack against all targets. '
-                                      '{R}WARNING:{W} May be illegal without authorization. '
                                       'Creates rogue AP to capture credentials. (default: {G}off{W})'))
 
         group.add_argument('--eviltwin-deauth-iface',
@@ -510,6 +510,63 @@ against the real AP and captures valid passwords.
                           action='store_true',
                           dest='eviltwin_no_validate',
                           help=self._verbose('Skip credential validation (testing only) (default: {G}off{W})'))
+
+    def _add_attack_monitor_args(self, monitor):
+        """Add wireless attack monitoring command-line arguments."""
+        monitor.add_argument('--monitor-attacks',
+                            action='store_true',
+                            dest='monitor_attacks',
+                            help=Color.s('Monitor for wireless attacks (deauth/disassoc frames). '
+                                        'Passively detects attack frames without interfering. '
+                                        'Displays real-time statistics, network lists, and attacker profiles. '
+                                        '{O}Requires tshark.{W} '
+                                        '(default: {G}off{W})'))
+
+        monitor.add_argument('--monitor-duration',
+                            action='store',
+                            dest='monitor_duration',
+                            metavar='[seconds]',
+                            type=int,
+                            default=0,
+                            help=self._verbose('Duration for attack monitoring in seconds. '
+                                              'Set to 0 for infinite monitoring. '
+                                              'Press Ctrl+C to stop early and view final statistics. '
+                                              '{O}Example:{W} --monitor-duration 3600 (monitor for 1 hour) '
+                                              '(default: {G}infinite{W})'))
+
+        monitor.add_argument('--monitor-log',
+                            action='store',
+                            dest='monitor_log_file',
+                            metavar='[file]',
+                            type=str,
+                            default=None,
+                            help=self._verbose('Log file path for attack events. '
+                                              'Logs include timestamp, attack type, source/dest MACs, BSSID, and ESSID. '
+                                              'Format: ISO8601 timestamp | DEAUTH/DISASSOC | Attacker | Target | BSSID | ESSID | Channel. '
+                                              '{O}Example:{W} --monitor-log /var/log/wifite/attacks.log '
+                                              '(default: {G}attack_monitor_<timestamp>.log{W})'))
+
+        monitor.add_argument('--monitor-channel',
+                            action='store',
+                            dest='monitor_channel',
+                            metavar='[channel]',
+                            type=int,
+                            default=None,
+                            help=self._verbose('Monitor specific channel for attacks. '
+                                              'Focuses monitoring on a single channel for better performance. '
+                                              'If not specified, uses current interface channel. '
+                                              '{O}Example:{W} --monitor-channel 6 (monitor channel 6 only) '
+                                              '(default: {G}current channel{W})'))
+
+        monitor.add_argument('--monitor-hop',
+                            action='store_true',
+                            dest='monitor_hop',
+                            help=self._verbose('Enable channel hopping during monitoring. '
+                                              'Cycles through all 2.4GHz channels (1-11) to detect attacks across spectrum. '
+                                              'Useful for comprehensive area monitoring but may miss some frames. '
+                                              'Cannot be used with --monitor-channel. '
+                                              '{O}Example:{W} --monitor-attacks --monitor-hop '
+                                              '(default: {G}off{W})'))
 
     def _add_wep_args(self, wep):
         # WEP
@@ -831,20 +888,20 @@ against the real AP and captures valid passwords.
                            type=int,
                            help=Color.s('Time to wait for PMKID capture (default: {G}%d{W} seconds)'
                                         % self.config.pmkid_timeout))
-        
+
         # Passive PMKID capture arguments
         pmkid.add_argument('--pmkid-passive',
                            action='store_true',
                            dest='pmkid_passive',
                            help=Color.s('Passive PMKID capture mode: Sniff all networks '
-                                       'without deauth. {R}WARNING:{W} Requires authorization. '
+                                       'without deauth. '
                                        '(default: {G}off{W})'))
-        
+
         pmkid.add_argument('--pmkid-sniff',
                            action='store_true',
                            dest='pmkid_passive',
                            help=argparse.SUPPRESS)  # Alias for --pmkid-passive
-        
+
         pmkid.add_argument('--pmkid-passive-duration',
                            action='store',
                            dest='pmkid_passive_duration',
@@ -852,20 +909,20 @@ against the real AP and captures valid passwords.
                            type=int,
                            help=self._verbose('Duration for passive capture in seconds '
                                              '(default: {G}infinite{W})'))
-        
+
         pmkid.add_argument('--pmkid-passive-interval',
                            action='store',
                            dest='pmkid_passive_interval',
                            metavar='[seconds]',
                            type=int,
                            help=self._verbose('Interval between hash extractions '
-                                             '(default: {G}%d{W} seconds)' 
+                                             '(default: {G}%d{W} seconds)'
                                              % self.config.pmkid_passive_interval))
 
     def _add_wpasec_args(self, wpasec):
         """
         Add wpa-sec upload command-line arguments to argument parser.
-        
+
         Defines all wpa-sec related arguments including:
         - --wpasec: Enable upload functionality
         - --wpasec-key: API key for authentication
@@ -874,10 +931,10 @@ against the real AP and captures valid passwords.
         - --wpasec-timeout: Connection timeout
         - --wpasec-email: Notification email
         - --wpasec-remove: Remove files after upload
-        
+
         Args:
             wpasec: Argument group for wpa-sec options
-            
+
         Example:
             >>> wpasec_group = parser.add_argument_group('WPA-SEC UPLOAD')
             >>> self._add_wpasec_args(wpasec_group)
