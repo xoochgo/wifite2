@@ -37,3 +37,4 @@ built-in.a
 Module.symvers
 *.pcap
 *.cap
+*.log
