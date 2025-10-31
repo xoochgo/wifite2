@@ -138,7 +138,32 @@ sudo python3 setup.py install
 sudo wifite
 ```
 
-### Development Install
+### Development Install with Poetry (Recommended for Developers)
+
+Poetry provides better dependency management and reproducible builds:
+
+```bash
+# Install Poetry (if not already installed)
+curl -sSL https://install.python-poetry.org | python3 -
+
+# Clone and enter directory
+git clone https://github.com/kimocoder/wifite2.git
+cd wifite2
+
+# Install all dependencies (creates virtual environment automatically)
+poetry install
+
+# Run wifite
+sudo poetry run wifite
+
+# Or activate the Poetry shell
+poetry shell
+sudo wifite
+```
+
+**See [POETRY.md](POETRY.md) for detailed Poetry usage and commands.**
+
+### Development Install with pip
 
 For development or if you want to modify wifite:
 
