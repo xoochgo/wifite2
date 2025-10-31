@@ -714,10 +714,9 @@ class PortalServer:
     
     def __del__(self):
         """Cleanup on deletion."""
-        try:
+        import contextlib
+        with contextlib.suppress(Exception):
             self.stop()
             # Clear caches to free memory
             self._template_cache.clear()
             self._static_cache.clear()
-        except:
-            pass

@@ -18,6 +18,9 @@ class ProcessManager:
     _instance = None
     _lock = threading.Lock()
 
+    # Maximum number of concurrent processes
+    MAX_PROCESSES = 100
+
     def __new__(cls):
         if cls._instance is None:
             with cls._lock:
@@ -30,12 +33,23 @@ class ProcessManager:
     def register_process(self, process):
         """Register a process for cleanup tracking"""
         with self._lock:
-            if len(self._processes) > 50:  # Reasonable limit
-                finished = {p for p in self._processes if hasattr(p, 'is_running') and not p.is_running()}
-                self._processes -= finished
+            # Check if approaching limit and trigger cleanup
+            if len(self._processes) >= self.MAX_PROCESSES:
+                if Configuration.verbose > 0:
+                    Color.pl(f'\n{{!}} {{O}}Warning: Process limit reached ({len(self._processes)}/{self.MAX_PROCESSES}), triggering cleanup{{W}}')
 
-                if len(self._processes) > 50:
+                # Identify and remove finished processes
+                finished = {p for p in self._processes if hasattr(p, 'is_running') and not p.is_running()}
+                if finished:
+                    if Configuration.verbose > 1:
+                        Color.pl(f'{{+}} {{C}}Removing {len(finished)} finished process(es){{W}}')
+                    self._processes -= finished
+
+                # Force-kill oldest processes if still over limit
+                if len(self._processes) >= self.MAX_PROCESSES:
                     oldest = list(self._processes)[:10]
+                    if Configuration.verbose > 0:
+                        Color.pl(f'{{!}} {{O}}Force-killing {len(oldest)} oldest process(es){{W}}')
                     for p in oldest:
                         try:
                             p.force_kill()
@@ -125,6 +139,12 @@ class Process(object):
         if Configuration.verbose > 1:
             Color.pe(f'\n {{C}}[?] {{W}} Executing: {{B}}{" ".join(command)}{{W}}')
 
+        # Check file descriptor limit before creating process
+        if Process.check_fd_limit():
+            if Configuration.verbose > 0:
+                Color.pl('{!} {O}Delaying process creation due to high FD usage{W}')
+            time.sleep(0.5)  # Brief delay to allow cleanup to complete
+
         self.out = None
         self.err = None
         if devnull:
@@ -140,7 +160,9 @@ class Process(object):
         try:
             self.pid = Popen(command, stdout=sout, stderr=serr, stdin=stdin, cwd=cwd, bufsize=bufsize)
         except OSError as e:
-            if e.errno == 24:
+            if e.errno == 24:  # Too many open files
+                if Configuration.verbose > 0:
+                    Color.pl('{!} {O}Too many open files, triggering emergency cleanup{W}')
                 ProcessManager().cleanup_all()
                 Process.cleanup_zombies()
                 time.sleep(0.1)
@@ -346,6 +368,7 @@ class Process(object):
 
     @staticmethod
     def get_open_fd_count():
+        """Get current open file descriptor count from /proc/{pid}/fd"""
         try:
             proc_fd_dir = f'/proc/{os.getpid()}/fd'
             if os.path.exists(proc_fd_dir):
@@ -356,16 +379,29 @@ class Process(object):
 
     @staticmethod
     def check_fd_limit():
+        """Check if approaching file descriptor limit (80% of soft limit) and trigger cleanup"""
         try:
             import resource
             soft, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
             current = Process.get_open_fd_count()
+
             if current > 0 and current > (soft * 0.8):
-                Color.pl(f'\n{{!}} {{O}}Warning: High file descriptor usage ({current}/{soft}){{W}}')
+                if Configuration.verbose > 0:
+                    Color.pl(f'\n{{!}} {{O}}Warning: High file descriptor usage ({current}/{soft}, {int(current/soft*100)}%){{W}}')
+
+                # Trigger cleanup
+                if Configuration.verbose > 1:
+                    Color.pl('{+} {C}Triggering automatic cleanup...{W}')
                 ProcessManager().cleanup_all()
                 Process.cleanup_zombies()
+
+                # Check again after cleanup
+                new_count = Process.get_open_fd_count()
+                if Configuration.verbose > 1:
+                    Color.pl(f'{{+}} {{C}}FD count after cleanup: {new_count}/{soft}{{W}}')
+
                 return True
-        except:
+        except Exception:
             pass
         return False
 

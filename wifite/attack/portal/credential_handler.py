@@ -10,7 +10,7 @@ Handles credential submissions, validation queueing, and response management.
 import time
 import threading
 from typing import Optional, Callable, Dict, List, Tuple
-from queue import Queue, Empty
+from queue import Queue, Empty, Full
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -165,7 +165,7 @@ class CredentialHandler:
                 
                 return True, 'Credentials submitted for validation'
                 
-            except:
+            except Full:
                 log_error('CredentialHandler', 'Validation queue is full')
                 return False, 'Server is busy. Please try again later.'
             

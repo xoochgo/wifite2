@@ -206,13 +206,12 @@ class EvilTwin(Attack):
             
             # Try to get assignment from wifite instance if available
             # This is a fallback for when the attack is run directly
-            try:
+            import contextlib
+            with contextlib.suppress(ImportError, AttributeError):
                 from ..wifite import Wifite
                 # Note: This is a fallback and may not always work
                 # The preferred approach is to set interface_assignment before calling run()
                 log_debug('EvilTwin', 'No interface assignment available, will use single interface mode')
-            except:
-                pass
             
             return None
             
@@ -520,13 +519,12 @@ class EvilTwin(Attack):
             
             # Verify interface is on the correct channel
             if hasattr(self.target, 'channel') and self.target.channel:
-                try:
+                import contextlib
+                with contextlib.suppress(Exception):
                     current_channel = Airmon.get_interface_channel(interface)
                     if current_channel and current_channel != self.target.channel:
                         log_warning('EvilTwin', f'Deauth interface on channel {current_channel}, target on {self.target.channel}')
                         Color.pl('{!} {O}Warning: Channel mismatch - deauth may be less effective{W}')
-                except:
-                    pass
             
             # Deauth will be handled by the adaptive deauth manager
             # in the main monitoring loop via _handle_deauth()

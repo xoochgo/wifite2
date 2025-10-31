@@ -534,10 +534,9 @@ class ContinuousDeauth(Thread):
 
         # Stop any running process
         if self.process and self.process.poll() is None:
-            try:
+            import contextlib
+            with contextlib.suppress(Exception):
                 self.process.interrupt()
-            except:
-                pass
 
         # Wait for thread to finish
         if self.is_alive():

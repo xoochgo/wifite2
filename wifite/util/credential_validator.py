@@ -208,19 +208,19 @@ class CredentialValidator:
                         log_info('CredentialValidator', f'Valid credentials for {ssid} (connected)')
                         break
                         
-                except:
-                    pass
+                except Exception as e:
+                    # Log unexpected errors but continue polling
+                    log_debug('CredentialValidator', f'Error reading wpa_supplicant output: {e}')
                 
                 time.sleep(poll_interval)
             
             # Stop process
-            try:
+            import contextlib
+            with contextlib.suppress(Exception):
                 process.interrupt()
                 time.sleep(0.5)
                 if process.poll() is None:
                     process.kill()
-            except:
-                pass
             
             # Update statistics and rate limiting state
             self.total_validations += 1
@@ -613,7 +613,6 @@ class CredentialValidator:
     
     def __del__(self):
         """Cleanup on deletion."""
-        try:
+        import contextlib
+        with contextlib.suppress(Exception):
             self.stop()
-        except:
-            pass

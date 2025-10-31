@@ -632,13 +632,13 @@ class InterfaceManager:
             state['up'] = 'UP' in output and 'state UP' in output
             
             # Get MAC address
-            try:
+            import contextlib
+            with contextlib.suppress(Exception):
                 state['mac'] = Ip.get_mac(interface)
-            except:
-                pass
             
             # Get mode using iw
-            try:
+            import contextlib
+            with contextlib.suppress(Exception):
                 iw_output = Process(['iw', 'dev', interface, 'info']).stdout()
                 if 'type AP' in iw_output or 'type master' in iw_output:
                     state['mode'] = 'AP'
@@ -646,19 +646,16 @@ class InterfaceManager:
                     state['mode'] = 'monitor'
                 elif 'type managed' in iw_output:
                     state['mode'] = 'managed'
-            except:
-                pass
             
             # Get IP addresses
-            try:
+            import contextlib
+            with contextlib.suppress(Exception):
                 ip_output = Process(['ip', 'addr', 'show', interface]).stdout()
                 for line in ip_output.split('\n'):
                     if 'inet ' in line:
                         parts = line.strip().split()
                         if len(parts) >= 2:
                             state['ip_addresses'].append(parts[1])
-            except:
-                pass
             
             return state
             
@@ -1139,10 +1136,9 @@ class InterfaceManager:
     
     def __del__(self):
         """Cleanup on deletion."""
-        try:
+        import contextlib
+        with contextlib.suppress(Exception):
             self.cleanup_all()
-        except:
-            pass
     
     # ========================================================================
     # Interface Detection and Capability Checking (Task 2)
@@ -1573,11 +1569,10 @@ class InterfaceManager:
                 if err and 'command failed' in err.lower():
                     log_debug('InterfaceManager', f'{interface} failed to set monitor mode: {err}')
                     # Try to restore original mode
-                    try:
+                    import contextlib
+                    with contextlib.suppress(Exception):
                         Process.call(f'iw dev {interface} set type {original_mode}')
                         Ip.up(interface)
-                    except:
-                        pass
                     return False
                 
                 Ip.up(interface)
@@ -1602,12 +1597,11 @@ class InterfaceManager:
             except Exception as e:
                 log_error('InterfaceManager', f'Error testing monitor mode on {interface}: {e}', e)
                 # Try to restore original state
-                try:
+                import contextlib
+                with contextlib.suppress(Exception):
                     Ip.down(interface)
                     Process.call(f'iw dev {interface} set type {original_mode}')
                     Ip.up(interface)
-                except:
-                    pass
                 return False
                 
         except Exception as e:

