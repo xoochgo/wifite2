@@ -37,52 +37,63 @@ class Hashcat(Dependency):
             return Aircrack.crack_handshake(handshake_obj, show_command=show_command)
 
         key = None
-        # Mode 22000 supports both WPA/WPA2 and WPA3-SAE (WPA-PBKDF2-PMKID+EAPOL)
-        hashcat_mode = '22000'
-        file_type_msg = "WPA3-SAE hash" if target_is_wpa3_sae else "WPA/WPA2 hash"
+        try:
+            # Mode 22000 supports both WPA/WPA2 and WPA3-SAE (WPA-PBKDF2-PMKID+EAPOL)
+            hashcat_mode = '22000'
+            file_type_msg = "WPA3-SAE hash" if target_is_wpa3_sae else "WPA/WPA2 hash"
 
-        Color.pl(f"{{+}} {{C}}Attempting to crack {file_type_msg} using Hashcat mode {hashcat_mode}{{W}}")
+            Color.pl(f"{{+}} {{C}}Attempting to crack {file_type_msg} using Hashcat mode {hashcat_mode}{{W}}")
 
-        # Crack hash_file
-        for additional_arg in ([], ['--show']):
-            command = [
-                'hashcat',
-                '--quiet',
-                '-m', hashcat_mode,
-                hash_file,
-                Configuration.wordlist
-            ]
-            if Hashcat.should_use_force():
-                command.append('--force')
-            command.extend(additional_arg)
-            if show_command:
-                Color.pl(f'{{+}} {{D}}Running: {{W}}{{P}}{" ".join(command)}{{W}}')
-            process = Process(command)
-            stdout, stderr = process.get_output()
+            # Crack hash_file
+            for additional_arg in ([], ['--show']):
+                command = [
+                    'hashcat',
+                    '--quiet',
+                    '-m', hashcat_mode,
+                    hash_file,
+                    Configuration.wordlist
+                ]
+                if Hashcat.should_use_force():
+                    command.append('--force')
+                command.extend(additional_arg)
+                if show_command:
+                    Color.pl(f'{{+}} {{D}}Running: {{W}}{{P}}{" ".join(command)}{{W}}')
+                process = Process(command)
+                stdout, stderr = process.get_output()
 
-            # Check for errors first
-            if 'No hashes loaded' in stdout or 'No hashes loaded' in stderr:
-                continue  # No valid hashes to crack
+                # Check for errors first
+                if 'No hashes loaded' in stdout or 'No hashes loaded' in stderr:
+                    continue  # No valid hashes to crack
 
-            if ':' not in stdout:
-                continue  # No cracked results
+                if ':' not in stdout:
+                    continue  # No cracked results
 
-            # Parse the key from hashcat output
-            # Expected format: hash:password
-            lines = stdout.strip().split('\n')
-            for line in lines:
-                if ':' in line and not line.startswith('The plugin') and 'hashcat.net' not in line:
-                    # Take the last part after the last colon as the password
-                    parts = line.split(':')
-                    if len(parts) >= 2:
-                        key = parts[-1].strip()
-                        if key and len(key) > 0:
-                            break
-            else:
-                continue
-            break
+                # Parse the key from hashcat output
+                # Expected format: hash:password
+                lines = stdout.strip().split('\n')
+                for line in lines:
+                    if ':' in line and not line.startswith('The plugin') and 'hashcat.net' not in line:
+                        # Take the last part after the last colon as the password
+                        parts = line.split(':')
+                        if len(parts) >= 2:
+                            key = parts[-1].strip()
+                            if key and len(key) > 0:
+                                break
+                else:
+                    continue
+                break
 
-        return key
+            return key
+        finally:
+            # Cleanup temporary hash file
+            if hash_file and os.path.exists(hash_file):
+                try:
+                    os.remove(hash_file)
+                    if Configuration.verbose > 1:
+                        Color.pl('{!} {O}Cleaned up temporary hash file{W}')
+                except OSError as e:
+                    if Configuration.verbose > 0:
+                        Color.pl('{!} {O}Warning: Could not remove hash file: %s{W}' % str(e))
 
     @staticmethod
     def crack_pmkid(pmkid_file, verbose=False):
@@ -175,73 +186,113 @@ class HcxPcapngTool(Dependency):
         For WPA3-SAE, generates hash file for mode 22001.
         Both use the same hcxpcapngtool -o flag, as mode 22000 supports both WPA2 and WPA3-SAE.
         """
+        import tempfile
+        
         # Use mode 22000 format for both WPA2 and WPA3-SAE
         # Hashcat mode 22000 supports WPA-PBKDF2-PMKID+EAPOL (includes SAE)
         # Mode 22001 is for WPA-PMK-PMKID+EAPOL (pre-computed PMK)
-        hash_file = Configuration.temp('generated.22000')
+        
+        # Create secure temporary file with proper permissions (0600)
+        # Using NamedTemporaryFile with delete=False to prevent race conditions
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.22000', delete=False, prefix='wifite_hash_') as tmp:
+            hash_file = tmp.name
+        
+        # Verify file permissions are secure (0600)
+        os.chmod(hash_file, 0o600)
 
-        if os.path.exists(hash_file):
-            os.remove(hash_file)
+        try:
+            command = [
+                'hcxpcapngtool',
+                '-o', hash_file,
+                handshake_obj.capfile # Assuming handshake_obj has a capfile attribute
+            ]
 
-        command = [
-            'hcxpcapngtool',
-            '-o', hash_file,
-            handshake_obj.capfile # Assuming handshake_obj has a capfile attribute
-        ]
+            if show_command:
+                Color.pl('{+} {D}Running: {W}{P}%s{W}' % ' '.join(command))
 
-        if show_command:
-            Color.pl('{+} {D}Running: {W}{P}%s{W}' % ' '.join(command))
+            process = Process(command)
+            stdout, stderr = process.get_output()
+            if not os.path.exists(hash_file) or os.path.getsize(hash_file) == 0:
+                # Check if this is due to missing frames (common with airodump captures)
+                if 'no hashes written' in stdout.lower() or 'missing frames' in stdout.lower():
+                    Color.pl('{!} {O}Warning: hcxpcapngtool could not extract hash (capture quality issue){W}')
+                    Color.pl('{!} {O}The capture file is missing required frames or metadata{W}')
+                    Color.pl('{!} {O}This is common with airodump-ng captures - consider using hcxdumptool instead{W}')
+                    # Cleanup failed hash file
+                    if os.path.exists(hash_file):
+                        try:
+                            os.remove(hash_file)
+                        except OSError:
+                            pass
+                    # Return None to signal fallback to aircrack-ng should be used
+                    return None
+                
+                # For other errors, provide detailed error message
+                error_msg = f'Failed to generate {"SAE hash" if is_wpa3_sae else "WPA/WPA2 hash"} file.'
+                error_msg += f'\nOutput from hcxpcapngtool:\nSTDOUT: {stdout}\nSTDERR: {stderr}'
+                # Also include tshark check for WPA3
+                if is_wpa3_sae:
+                    from .tshark import Tshark
+                    tshark_check_cmd = ['tshark', '-r', handshake_obj.capfile, '-Y', 'wlan.fc.type_subtype == 0x0b'] # Authentication frames
+                    tshark_process = Process(tshark_check_cmd)
+                    tshark_stdout, _ = tshark_process.get_output()
+                    if not tshark_stdout:
+                        error_msg += '\nAdditionally, tshark found no authentication frames in the capture file. Ensure it is a valid WPA3-SAE handshake.'
+                    else:
+                        error_msg += f'\nTshark found {len(tshark_stdout.strip().split(chr(10)))} authentication frames in the capture.'
 
-        process = Process(command)
-        stdout, stderr = process.get_output()
-        if not os.path.exists(hash_file) or os.path.getsize(hash_file) == 0:
-            # Check if this is due to missing frames (common with airodump captures)
-            if 'no hashes written' in stdout.lower() or 'missing frames' in stdout.lower():
-                Color.pl('{!} {O}Warning: hcxpcapngtool could not extract hash (capture quality issue){W}')
-                Color.pl('{!} {O}The capture file is missing required frames or metadata{W}')
-                Color.pl('{!} {O}This is common with airodump-ng captures - consider using hcxdumptool instead{W}')
-                # Return None to signal fallback to aircrack-ng should be used
-                return None
-            
-            # For other errors, provide detailed error message
-            error_msg = f'Failed to generate {"SAE hash" if is_wpa3_sae else "WPA/WPA2 hash"} file.'
-            error_msg += f'\nOutput from hcxpcapngtool:\nSTDOUT: {stdout}\nSTDERR: {stderr}'
-            # Also include tshark check for WPA3
-            if is_wpa3_sae:
-                from .tshark import Tshark
-                tshark_check_cmd = ['tshark', '-r', handshake_obj.capfile, '-Y', 'wlan.fc.type_subtype == 0x0b'] # Authentication frames
-                tshark_process = Process(tshark_check_cmd)
-                tshark_stdout, _ = tshark_process.get_output()
-                if not tshark_stdout:
-                    error_msg += '\nAdditionally, tshark found no authentication frames in the capture file. Ensure it is a valid WPA3-SAE handshake.'
-                else:
-                    error_msg += f'\nTshark found {len(tshark_stdout.strip().split(chr(10)))} authentication frames in the capture.'
-
-            raise ValueError(error_msg)
-        return hash_file
+                raise ValueError(error_msg)
+            return hash_file
+        except Exception:
+            # Cleanup hash file on any error
+            if hash_file and os.path.exists(hash_file):
+                try:
+                    os.remove(hash_file)
+                    if Configuration.verbose > 1:
+                        Color.pl('{!} {O}Cleaned up temporary hash file after error{W}')
+                except OSError:
+                    pass
+            raise
 
     @staticmethod
     def generate_john_file(handshake, show_command=False):
-        john_file = Configuration.temp('generated.john')
-        if os.path.exists(john_file):
-            os.remove(john_file)
+        import tempfile
+        
+        # Create secure temporary file with proper permissions (0600)
+        # Using NamedTemporaryFile with delete=False to prevent race conditions
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.john', delete=False, prefix='wifite_john_') as tmp:
+            john_file = tmp.name
+        
+        # Verify file permissions are secure (0600)
+        os.chmod(john_file, 0o600)
 
-        command = [
-            'hcxpcapngtool',
-            '--john', john_file,
-            handshake.capfile
-        ]
+        try:
+            command = [
+                'hcxpcapngtool',
+                '--john', john_file,
+                handshake.capfile
+            ]
 
-        if show_command:
-            Color.pl('{+} {D}Running: {W}{P}%s{W}' % ' '.join(command))
+            if show_command:
+                Color.pl('{+} {D}Running: {W}{P}%s{W}' % ' '.join(command))
 
-        process = Process(command)
-        stdout, stderr = process.get_output()
-        if not os.path.exists(john_file):
-            raise ValueError('Failed to generate .john file, output: \n%s\n%s' % (
-                stdout, stderr))
+            process = Process(command)
+            stdout, stderr = process.get_output()
+            if not os.path.exists(john_file):
+                raise ValueError('Failed to generate .john file, output: \n%s\n%s' % (
+                    stdout, stderr))
 
-        return john_file
+            return john_file
+        except Exception:
+            # Cleanup john file on any error
+            if john_file and os.path.exists(john_file):
+                try:
+                    os.remove(john_file)
+                    if Configuration.verbose > 1:
+                        Color.pl('{!} {O}Cleaned up temporary john file after error{W}')
+                except OSError:
+                    pass
+            raise
 
     def get_pmkid_hash(self, pcapng_file):
         if os.path.exists(self.pmkid_file):
@@ -283,11 +334,15 @@ class HcxPcapngTool(Dependency):
         Returns:
             List of dicts: [{'bssid': str, 'essid': str, 'hash': str}, ...]
         """
-        temp_hash_file = Configuration.temp('all_pmkids.22000')
-
-        # Remove temp file if it exists
-        if os.path.exists(temp_hash_file):
-            os.remove(temp_hash_file)
+        import tempfile
+        
+        # Create secure temporary file with proper permissions (0600)
+        # Using NamedTemporaryFile with delete=False to prevent race conditions
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.22000', delete=False, prefix='wifite_pmkids_') as tmp:
+            temp_hash_file = tmp.name
+        
+        # Verify file permissions are secure (0600)
+        os.chmod(temp_hash_file, 0o600)
 
         # Check if pcapng file exists
         if not os.path.exists(pcapng_file):
@@ -367,7 +422,10 @@ class HcxPcapngTool(Dependency):
             if os.path.exists(temp_hash_file):
                 try:
                     os.remove(temp_hash_file)
-                except:
-                    pass
+                    if Configuration.verbose > 1:
+                        Color.pl('{!} {O}Cleaned up temporary PMKID hash file{W}')
+                except OSError as e:
+                    if Configuration.verbose > 0:
+                        Color.pl('{!} {O}Warning: Could not remove PMKID hash file: %s{W}' % str(e))
 
         return pmkids

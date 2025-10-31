@@ -451,8 +451,9 @@ against the real AP and captures valid passwords.
         glob.add_argument('--hcxdump',
                           action='store_true',
                           dest='use_hcxdump',
-                          help=Color.s('Use {C}hcxdumptool{W} for dual interface WPA handshake capture. '
-                                      'Provides PMF-aware capture and full spectrum monitoring. '
+                          help=Color.s('Use {C}hcxdumptool{W} for WPA handshake capture (single or dual interface). '
+                                      'Creates .pcapng files with better compatibility for Hashcat. '
+                                      'Provides PMF-aware capture and built-in deauth capabilities. '
                                       'Falls back to airodump-ng if hcxdumptool is unavailable. '
                                       'Requires hcxdumptool v6.2.0+ (default: {G}off{W})'))
 

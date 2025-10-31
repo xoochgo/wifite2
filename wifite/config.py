@@ -1055,10 +1055,10 @@ class Configuration(object):
             cls.auto_assign_interfaces = False
             Color.pl('{+} {C}option:{W} automatic interface assignment {O}disabled{W}')
 
-        # hcxdump mode for dual interface WPA capture
+        # hcxdump mode for WPA capture (single or dual interface)
         if hasattr(args, 'use_hcxdump') and args.use_hcxdump:
             cls.use_hcxdump = True
-            Color.pl('{+} {C}option:{W} using {G}hcxdumptool{W} for dual interface WPA capture')
+            Color.pl('{+} {C}option:{W} using {G}hcxdumptool{W} for WPA handshake capture')
 
     @classmethod
     def parse_wpasec_args(cls, args):

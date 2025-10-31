@@ -365,7 +365,6 @@ class Hostapd(Dependency):
 
     def __del__(self):
         """Cleanup on deletion."""
-        try:
+        import contextlib
+        with contextlib.suppress(Exception):
             self.cleanup()
-        except:
-            pass
