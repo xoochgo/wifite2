@@ -81,8 +81,8 @@ class ScannerView:
 
         # Count targets by encryption type
         wep_count = sum(1 for t in self.targets if 'WEP' in t.encryption)
-        wpa_count = sum(1 for t in self.targets if 'WPA' in t.encryption and not hasattr(t, 'is_wpa3') or not t.is_wpa3)
-        wpa3_count = sum(1 for t in self.targets if hasattr(t, 'is_wpa3') and t.is_wpa3)
+        wpa_count = sum(1 for t in self.targets if 'WPA' in t.encryption and not getattr(t, 'is_wpa3', False))
+        wpa3_count = sum(1 for t in self.targets if getattr(t, 'is_wpa3', False))
         wps_count = sum(1 for t in self.targets if hasattr(t, 'wps') and t.wps)
 
         # Count clients
