@@ -69,9 +69,11 @@ class Handshake(object):
         # Check if ANY validator detects a handshake
         # Tshark is strict (requires all 4 messages), but cowpatty/aircrack
         # can work with just messages 2&3, which is sufficient for cracking
+        # hcxpcapngtool is best for hcxdumptool captures (pcapng format)
         return (len(self.tshark_handshakes()) > 0 or
                 len(self.cowpatty_handshakes()) > 0 or
-                len(self.aircrack_handshakes()) > 0)
+                len(self.aircrack_handshakes()) > 0 or
+                len(self.hcxpcapngtool_handshakes()) > 0)
 
     def tshark_handshakes(self):
         """Returns list[tuple] of BSSID & ESSID pairs (ESSIDs are always `None`)."""
@@ -83,15 +85,23 @@ class Handshake(object):
         if not Process.exists('cowpatty'):
             return []
 
-        # Needs to check if cowpatty is updated and have the -2 parameter
-        cowpattycheck = Process('cowpatty', devnull=False)
+        # Check if cowpatty supports the -2 parameter (frames 1&2 or 2&3)
+        # Run cowpatty with -h to get help output instead of running without args
+        try:
+            cowpattycheck = Process(['cowpatty', '-h'], devnull=False)
+            supports_dash_2 = 'frames 1 and 2 or 2 and 3 for key attack' in cowpattycheck.stdout()
+        except Exception:
+            # If help check fails, assume -2 is not supported
+            supports_dash_2 = False
 
-        command = [
-            'cowpatty',
-            '-2' if 'frames 1 and 2 or 2 and 3 for key attack' in cowpattycheck.stdout() else '',
-            '-r',   self.capfile,
-            '-c'    # Check for handshake
-        ]
+        # Build command - only include -2 if supported
+        command = ['cowpatty']
+        if supports_dash_2:
+            command.append('-2')
+        command.extend([
+            '-r', self.capfile,
+            '-c'  # Check for handshake
+        ])
 
         proc = Process(command, devnull=False)
         return next(
@@ -122,6 +132,65 @@ class Handshake(object):
         else:
             return []
 
+    def hcxpcapngtool_handshakes(self):
+        """
+        Returns tuple (BSSID,None) if hcxpcapngtool can extract valid handshake data.
+        This is especially useful for pcapng files captured by hcxdumptool.
+        Only runs on .pcapng files as hcxpcapngtool is optimized for that format.
+        """
+        if not Process.exists('hcxpcapngtool'):
+            return []
+        
+        # Only use hcxpcapngtool for pcapng files (hcxdumptool format)
+        # For older .cap files, use aircrack/cowpatty/tshark instead
+        if not self.capfile.lower().endswith('.pcapng'):
+            return []
+
+        import tempfile
+        
+        # Create a temporary hash file to test if hcxpcapngtool can extract data
+        try:
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.22000', delete=False) as tmp:
+                hash_file = tmp.name
+            
+            command = [
+                'hcxpcapngtool',
+                '-o', hash_file,
+                self.capfile
+            ]
+            
+            proc = Process(command, devnull=False)
+            
+            # Check if hash file was created and has content
+            if os.path.exists(hash_file) and os.path.getsize(hash_file) > 0:
+                # Successfully extracted handshake data
+                result = [(self.bssid, None)] if self.bssid else [(None, self.essid)]
+                
+                # Clean up temp file
+                try:
+                    os.remove(hash_file)
+                except OSError:
+                    pass
+                
+                return result
+            else:
+                # No valid handshake data found
+                try:
+                    if os.path.exists(hash_file):
+                        os.remove(hash_file)
+                except OSError:
+                    pass
+                return []
+                
+        except Exception:
+            # If anything goes wrong, clean up and return empty
+            try:
+                if hash_file and os.path.exists(hash_file):
+                    os.remove(hash_file)
+            except (OSError, NameError):
+                pass
+            return []
+
     def analyze(self):
         """Prints analysis of handshake capfile"""
         self.divine_bssid_and_essid()
@@ -133,6 +202,9 @@ class Handshake(object):
             Handshake.print_pairs(self.cowpatty_handshakes(), 'cowpatty')
 
         Handshake.print_pairs(self.aircrack_handshakes(), 'aircrack')
+        
+        if Process.exists('hcxpcapngtool'):
+            Handshake.print_pairs(self.hcxpcapngtool_handshakes(), 'hcxpcapng')
 
     def strip(self, outfile=None):
         # XXX: This method might break aircrack-ng, use at own risk.

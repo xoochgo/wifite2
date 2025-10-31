@@ -328,19 +328,50 @@ class SessionManager:
         Args:
             session: SessionState to save
         """
+        import tempfile
+        
         session.updated_at = time.time()
         session_path = self._get_session_path(session.session_id)
         
-        # Write to temporary file first, then rename (atomic operation)
-        temp_path = session_path + '.tmp'
-        with open(temp_path, 'w') as f:
-            json.dump(session.to_dict(), f, indent=2)
+        # Use secure temporary file with unique name to avoid race conditions
+        # mkstemp creates file atomically with secure permissions (0600)
+        temp_fd = None
+        temp_path = None
         
-        # Set proper permissions (owner read/write only)
-        os.chmod(temp_path, 0o600)
-        
-        # Atomic rename
-        os.rename(temp_path, session_path)
+        try:
+            # Create secure temporary file in same directory as target
+            # This ensures atomic rename works (same filesystem)
+            temp_fd, temp_path = tempfile.mkstemp(
+                suffix='.tmp',
+                prefix=f'.{session.session_id}_',
+                dir=self.session_dir
+            )
+            
+            # Write session data using file descriptor
+            with os.fdopen(temp_fd, 'w') as f:
+                temp_fd = None  # fdopen takes ownership
+                json.dump(session.to_dict(), f, indent=2)
+            
+            # Permissions already secure (0600 by default from mkstemp)
+            # Atomic rename to final location
+            os.rename(temp_path, session_path)
+            temp_path = None  # Successfully renamed
+            
+        except Exception:
+            # Clean up temp file on error
+            if temp_fd is not None:
+                try:
+                    os.close(temp_fd)
+                except OSError:
+                    pass
+            
+            if temp_path is not None and os.path.exists(temp_path):
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass
+            
+            raise  # Re-raise the original exception
     
     def load_session(self, session_id: str = None) -> SessionState:
         """

@@ -195,13 +195,13 @@ class HcxPcapngTool(Dependency):
         # Use mode 22000 format for both WPA2 and WPA3-SAE
         # Hashcat mode 22000 supports WPA-PBKDF2-PMKID+EAPOL (includes SAE)
         # Mode 22001 is for WPA-PMK-PMKID+EAPOL (pre-computed PMK)
-        
+
         # Create secure temporary file with proper permissions (0600)
         # Using NamedTemporaryFile with delete=False to prevent race conditions
         log_debug('HcxPcapngTool', 'Creating secure temporary hash file')
         with tempfile.NamedTemporaryFile(mode='w', suffix='.22000', delete=False, prefix='wifite_hash_') as tmp:
             hash_file = tmp.name
-        
+
         # Verify file permissions are secure (0600)
         os.chmod(hash_file, 0o600)
         log_debug('HcxPcapngTool', f'Created temporary hash file: {hash_file} (permissions: 0600)')
@@ -219,18 +219,18 @@ class HcxPcapngTool(Dependency):
 
             process = Process(command)
             stdout, stderr = process.get_output()
-            
+
             log_debug('HcxPcapngTool', f'hcxpcapngtool stdout: {stdout[:200]}...' if len(stdout) > 200 else f'hcxpcapngtool stdout: {stdout}')
             if stderr:
                 log_debug('HcxPcapngTool', f'hcxpcapngtool stderr: {stderr[:200]}...' if len(stderr) > 200 else f'hcxpcapngtool stderr: {stderr}')
-            
+
             if not os.path.exists(hash_file) or os.path.getsize(hash_file) == 0:
                 # Check if this is due to missing frames (common with airodump captures)
                 if 'no hashes written' in stdout.lower() or 'missing frames' in stdout.lower():
                     log_warning('HcxPcapngTool', 'Hash generation failed: capture quality issue (missing frames)')
-                    Color.pl('{!} {O}Warning: hcxpcapngtool could not extract hash (capture quality issue){W}')
-                    Color.pl('{!} {O}The capture file is missing required frames or metadata{W}')
-                    Color.pl('{!} {O}This is common with airodump-ng captures - consider using hcxdumptool instead{W}')
+                    #Color.pl('{!} {O}Warning: hcxpcapngtool could not extract hash (capture quality issue){W}')
+                    #Color.pl('{!} {O}The capture file is missing required frames or metadata{W}')
+                    #Color.pl('{!} {O}This is common with airodump-ng captures - consider using hcxdumptool instead{W}')
                     # Cleanup failed hash file
                     if os.path.exists(hash_file):
                         try:
@@ -240,7 +240,7 @@ class HcxPcapngTool(Dependency):
                             pass
                     # Return None to signal fallback to aircrack-ng should be used
                     return None
-                
+
                 # For other errors, provide detailed error message
                 error_msg = f'Failed to generate {"SAE hash" if is_wpa3_sae else "WPA/WPA2 hash"} file.'
                 error_msg += f'\nOutput from hcxpcapngtool:\nSTDOUT: {stdout}\nSTDERR: {stderr}'

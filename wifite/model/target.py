@@ -72,7 +72,10 @@ class Target(object):
         self.manufacturer = None
         self.wps = WPSState.NONE
         self.bssid = fields[0].strip()
-        self.channel = fields[3].strip()
+        try:
+            self.channel = int(fields[3].strip())
+        except (ValueError, IndexError):
+            self.channel = -1
         self.encryption = fields[5].strip() # Contains encryption type(s) like "WPA2 WPA3 OWE"
         self.authentication = fields[7].strip() # Contains auth type(s) like "PSK SAE MGT"
 
@@ -208,7 +211,7 @@ class Target(object):
 
     def validate(self):
         """ Checks that the target is valid. """
-        if self.channel == '-1':
+        if self.channel == -1:
             pass
 
         # Filter broadcast/multicast BSSIDs, see https://github.com/derv82/wifite2/issues/32

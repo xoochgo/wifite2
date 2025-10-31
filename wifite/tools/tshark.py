@@ -169,20 +169,51 @@ class Tshark(Dependency):
         try:
             p.wait()
             lines = p.stdout()
-        except Exception as e:
-            if isinstance(e, KeyboardInterrupt):
-                raise KeyboardInterrupt from e
+        except KeyboardInterrupt:
+            raise
+        except (OSError, IOError) as e:
+            from ..config import Configuration
+            if Configuration.verbose > 0:
+                from ..util.color import Color
+                Color.pl('{!} {O}Warning: tshark WPS detection failed: %s{W}' % str(e))
             return
+        except Exception as e:
+            from ..config import Configuration
+            from ..util.color import Color
+            Color.pl('{!} {R}Unexpected error in WPS detection: %s{W}' % str(e))
+            if Configuration.verbose > 1:
+                import traceback
+                Color.pl('{!} {O}%s{W}' % traceback.format_exc())
+            return
+        
         wps_bssids = set()
         locked_bssids = set()
+        
         for line in lines.split('\n'):
-            if ',' not in line:
+            line = line.strip()
+            if not line:
                 continue
-            bssid, locked = line.split(',')
-            if '1' not in locked:
-                wps_bssids.add(bssid.upper())
-            else:
+            
+            # Split on first comma only to handle trailing commas
+            parts = line.split(',', maxsplit=1)
+            
+            if len(parts) < 1:
+                continue
+            
+            bssid = parts[0].strip()
+            locked = parts[1].strip() if len(parts) > 1 else ''
+            
+            # Validate BSSID format (basic check: should be 17 chars with colons)
+            if len(bssid) != 17 or bssid.count(':') != 5:
+                continue
+            
+            # Check locked status - be specific!
+            # 0x01, 0x1, or 1 = locked
+            # Empty, 0x00, 0, or any other value = unlocked
+            if locked.lower() in ('0x01', '0x1', '1'):
                 locked_bssids.add(bssid.upper())
+            else:
+                wps_bssids.add(bssid.upper())
 
         for t in targets:
             target_bssid = t.bssid.upper()

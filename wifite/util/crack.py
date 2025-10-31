@@ -154,11 +154,39 @@ class CrackHelper:
             else:
                 continue
 
-            name, essid, bssid, date = hs_file.split('_')
-            date = date.rsplit('.', 1)[0]
-            days, hours = date.split('T')
-            hours = hours.replace('-', ':')
-            date = f'{days} {hours}'
+            # Parse filename: name_essid_bssid_date.ext
+            # ESSID can contain underscores, so split from right
+            # Expected format: handshake_ESSID_AA-BB-CC-DD-EE-FF_20251031T120000.cap
+            try:
+                # Remove file extension first
+                filename_no_ext = hs_file.rsplit('.', 1)[0]
+                
+                # Split from right: last 3 parts are always bssid, date (and first is name)
+                parts = filename_no_ext.split('_')
+                
+                if len(parts) < 4:
+                    # Malformed filename, skip
+                    if Configuration.verbose > 0:
+                        Color.pl('{!} {O}Skipping malformed filename: %s{W}' % hs_file)
+                    continue
+                
+                # Extract parts: name is first, bssid and date are last two
+                name = parts[0]
+                date = parts[-1]
+                bssid = parts[-2]
+                # Everything in between is the ESSID (may contain underscores)
+                essid = '_'.join(parts[1:-2])
+                
+                # Parse date
+                days, hours = date.split('T')
+                hours = hours.replace('-', ':')
+                date = f'{days} {hours}'
+                
+            except (ValueError, IndexError) as e:
+                # Failed to parse filename
+                if Configuration.verbose > 0:
+                    Color.pl('{!} {O}Error parsing filename %s: %s{W}' % (hs_file, str(e)))
+                continue
 
             if hs_type == '4-WAY':
                 # Patch for essid with " " (zero) or dot "." in name
@@ -169,16 +197,29 @@ class CrackHelper:
                 essid = essid if essid_discovery is None else essid_discovery
             elif hs_type == 'PMKID':
                 # Decode hex-encoded ESSID from passive PMKID capture
-                # Check if essid looks like hex (all characters are hex digits)
-                if all(c in '0123456789ABCDEFabcdef' for c in essid):
+                # Only decode if it looks like hex-encoded UTF-8 (not just valid hex)
+                # Criteria:
+                # 1. Length >= 16 (minimum for 8-char ESSID encoded as hex)
+                # 2. Even length (valid hex pairs)
+                # 3. All characters are hex digits
+                # 4. Decoded result is shorter than original (hex encoding expands)
+                # 5. Decoded result contains only printable characters
+                if (len(essid) >= 16 and 
+                    len(essid) % 2 == 0 and 
+                    all(c in '0123456789ABCDEFabcdef' for c in essid)):
                     try:
-                        # Try to decode from hex
-                        decoded_essid = bytes.fromhex(essid).decode('utf-8', errors='ignore')
-                        # Only use decoded version if it's not empty and looks reasonable
-                        if decoded_essid and len(decoded_essid) > 0:
+                        # Try to decode from hex (strict mode)
+                        decoded_essid = bytes.fromhex(essid).decode('utf-8', errors='strict')
+                        
+                        # Validate decoded result
+                        if (decoded_essid and 
+                            len(decoded_essid) > 0 and
+                            len(decoded_essid) < len(essid) and  # Hex encoding should be longer
+                            all(32 <= ord(c) <= 126 or ord(c) >= 128 for c in decoded_essid)):  # Printable chars
                             essid = decoded_essid
                     except (ValueError, UnicodeDecodeError):
                         # If decoding fails, keep the original hex string
+                        # This is expected for legitimate network names like "CAFE", "DEAD", etc.
                         pass
             
             handshake = {

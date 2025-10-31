@@ -292,25 +292,77 @@ class Scanner(object):
         return self.targets
 
     def _cleanup_memory(self):
-        """Periodic memory cleanup to prevent bloat during long scans"""
-        # Limit target list size
+        """Enhanced memory cleanup with time-based expiration to prevent bloat during long scans"""
+        from time import time
+        current_time = time()
+        
+        # 1. Remove stale targets (not seen in 5 minutes)
+        stale_threshold = current_time - 300  # 5 minutes
+        initial_target_count = len(self.targets)
+        
+        # Filter out stale targets
+        self.targets = [
+            t for t in self.targets 
+            if getattr(t, 'last_seen', current_time) > stale_threshold
+        ]
+        
+        stale_removed = initial_target_count - len(self.targets)
+        if stale_removed > 0 and Configuration.verbose > 1:
+            Color.pl('{!} {O}Removed %d stale targets (not seen in 5 min){W}' % stale_removed)
+        
+        # 2. Limit target list size (keep strongest signals)
         if len(self.targets) > self._max_targets:
-            # Keep only the strongest targets
+            # Sort by power (strongest first)
             self.targets.sort(key=lambda x: x.power, reverse=True)
+            removed_count = len(self.targets) - self._max_targets
             self.targets = self.targets[:self._max_targets]
-
-        # Clean up old archived targets (keep only recent ones)
-        if len(self.target_archives) > 500:  # Limit archive size
-            # Remove oldest entries, keep newest 300
-            sorted_archives = sorted(self.target_archives.items(),
-                                   key=lambda x: getattr(x[1], 'last_seen', 0),
-                                   reverse=True)
-            self.target_archives = dict(sorted_archives[:300])
-
-        # Force garbage collection periodically
+            
+            if Configuration.verbose > 1:
+                Color.pl('{!} {O}Trimmed %d weak targets (limit: %d){W}' % 
+                        (removed_count, self._max_targets))
+        
+        # 3. Clean up old archived targets with time-based expiration
+        if len(self.target_archives) > 500:
+            # Remove archives older than 1 hour
+            archive_threshold = current_time - 3600  # 1 hour
+            initial_archive_count = len(self.target_archives)
+            
+            # Filter by age first
+            self.target_archives = {
+                bssid: target for bssid, target in self.target_archives.items()
+                if getattr(target, 'last_seen', current_time) > archive_threshold
+            }
+            
+            # If still too many, keep only the most recent
+            if len(self.target_archives) > 300:
+                sorted_archives = sorted(
+                    self.target_archives.items(),
+                    key=lambda x: getattr(x[1], 'last_seen', 0),
+                    reverse=True
+                )
+                self.target_archives = dict(sorted_archives[:300])
+            
+            archive_removed = initial_archive_count - len(self.target_archives)
+            if archive_removed > 0 and Configuration.verbose > 1:
+                Color.pl('{!} {O}Cleaned %d old archived targets{W}' % archive_removed)
+        
+        # 4. Force garbage collection periodically
         if self._cleanup_counter % 50 == 0:  # Every 50 cleanup cycles
             import gc
-            gc.collect()
+            collected = gc.collect()
+            
+            if Configuration.verbose > 2:
+                Color.pl('{+} {C}Garbage collected %d objects{W}' % collected)
+                
+                # Show memory usage if verbose enough
+                try:
+                    import psutil
+                    import os
+                    process = psutil.Process(os.getpid())
+                    memory_mb = process.memory_info().rss / 1024 / 1024
+                    Color.pl('{+} {C}Memory usage: %.1f MB{W}' % memory_mb)
+                except ImportError:
+                    pass  # psutil not available
 
     def _prompt_user_for_targets(self):
         """Prompt user to select targets from the list"""

@@ -590,7 +590,7 @@ class WpaSecUploader:
             Color.pl('{!} {O}Troubleshooting: Check your internet connection{W}')
             Color.pl('{!} {O}Try increasing timeout with: {C}--wpasec-timeout 60{W}')
             log_debug('WpaSecUploader', 'Error category: Network connectivity/timeout issue')
-        elif 'dns' in error_lower or 'resolve' in error_lower or 'host' in error_lower:
+        elif 'dns' in error_lower or 'resolve' in error_lower or 'host' in error_lower or 'service not known' in error_lower or 'name or service' in error_lower:
             Color.pl('{!} {O}Troubleshooting: DNS resolution failed{W}')
             Color.pl('{!} {O}Check your network settings and DNS configuration{W}')
             log_debug('WpaSecUploader', 'Error category: DNS resolution failure')
@@ -612,7 +612,7 @@ class WpaSecUploader:
             Color.pl('{!} {O}The wpa-sec service may be temporarily unavailable{W}')
             Color.pl('{!} {O}Try again later or check: {C}https://wpa-sec.stanev.org{W}')
             log_debug('WpaSecUploader', 'Error category: HTTP 500 - server error')
-        elif 'rate' in error_lower or 'limit' in error_lower:
+        elif 'rate' in error_lower or 'limit' in error_lower or 'too many' in error_lower:
             Color.pl('{!} {O}Troubleshooting: Rate limit exceeded{W}')
             Color.pl('{!} {O}Wait a few minutes before retrying upload{W}')
             log_debug('WpaSecUploader', 'Error category: Rate limiting')
