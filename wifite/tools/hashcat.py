@@ -30,6 +30,12 @@ class Hashcat(Dependency):
         """
         hash_file = HcxPcapngTool.generate_hash_file(handshake_obj, target_is_wpa3_sae, show_command=show_command)
 
+        # If hash file generation failed due to capture quality, fall back to aircrack-ng
+        if hash_file is None:
+            Color.pl('{!} {O}Falling back to aircrack-ng for cracking{W}')
+            from .aircrack import Aircrack
+            return Aircrack.crack_handshake(handshake_obj, show_command=show_command)
+
         key = None
         # Mode 22000 supports both WPA/WPA2 and WPA3-SAE (WPA-PBKDF2-PMKID+EAPOL)
         hashcat_mode = '22000'
@@ -189,6 +195,15 @@ class HcxPcapngTool(Dependency):
         process = Process(command)
         stdout, stderr = process.get_output()
         if not os.path.exists(hash_file) or os.path.getsize(hash_file) == 0:
+            # Check if this is due to missing frames (common with airodump captures)
+            if 'no hashes written' in stdout.lower() or 'missing frames' in stdout.lower():
+                Color.pl('{!} {O}Warning: hcxpcapngtool could not extract hash (capture quality issue){W}')
+                Color.pl('{!} {O}The capture file is missing required frames or metadata{W}')
+                Color.pl('{!} {O}This is common with airodump-ng captures - consider using hcxdumptool instead{W}')
+                # Return None to signal fallback to aircrack-ng should be used
+                return None
+            
+            # For other errors, provide detailed error message
             error_msg = f'Failed to generate {"SAE hash" if is_wpa3_sae else "WPA/WPA2 hash"} file.'
             error_msg += f'\nOutput from hcxpcapngtool:\nSTDOUT: {stdout}\nSTDERR: {stderr}'
             # Also include tshark check for WPA3
