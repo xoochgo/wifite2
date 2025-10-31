@@ -63,10 +63,14 @@ class AttackWPS(Attack):
             return self._extracted_from_run_14(
                 '\r{!} {O}--pixie{R} was given, ignoring WPS PIN Attack on {O}%s{W}'
             )
+        
+        # Cache pixie-dust support check to avoid duplicate reaver -h calls
+        reaver_supports_pixie = Reaver.is_pixiedust_supported() if self.pixie_dust else True
+        
         if not Reaver.exists() and Bully.exists():
             # Use bully if reaver isn't available
             return self.run_bully()
-        elif self.pixie_dust and not Reaver.is_pixiedust_supported() and Bully.exists():
+        elif self.pixie_dust and not reaver_supports_pixie and Bully.exists():
             # Use bully if reaver can't do pixie-dust
             return self.run_bully()
         elif Configuration.use_bully:
@@ -79,7 +83,7 @@ class AttackWPS(Attack):
             else:
                 Color.pl('\r{!} {R}Skipping WPS PIN attack: {O}reaver{R} not found.{W}')
             return False
-        elif self.pixie_dust and not Reaver.is_pixiedust_supported():
+        elif self.pixie_dust and not reaver_supports_pixie:
             # Print error if reaver can't support pixie-dust (bully not available)
             Color.pl('\r{!} {R}Skipping WPS attack: {O}reaver{R} does not support {O}--pixie-dust{W}')
             return False
