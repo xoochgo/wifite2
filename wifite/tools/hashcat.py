@@ -5,6 +5,7 @@ from .dependency import Dependency
 from ..config import Configuration
 from ..util.process import Process
 from ..util.color import Color
+from ..util.logger import log_debug, log_info, log_warning, log_error
 import os
 
 hccapx_autoremove = False  # change this to True if you want the hccapx files to be automatically removed
@@ -188,17 +189,22 @@ class HcxPcapngTool(Dependency):
         """
         import tempfile
         
+        hash_type = "WPA3-SAE" if is_wpa3_sae else "WPA/WPA2"
+        log_info('HcxPcapngTool', f'Generating {hash_type} hash file from capture: {handshake_obj.capfile}')
+        
         # Use mode 22000 format for both WPA2 and WPA3-SAE
         # Hashcat mode 22000 supports WPA-PBKDF2-PMKID+EAPOL (includes SAE)
         # Mode 22001 is for WPA-PMK-PMKID+EAPOL (pre-computed PMK)
         
         # Create secure temporary file with proper permissions (0600)
         # Using NamedTemporaryFile with delete=False to prevent race conditions
+        log_debug('HcxPcapngTool', 'Creating secure temporary hash file')
         with tempfile.NamedTemporaryFile(mode='w', suffix='.22000', delete=False, prefix='wifite_hash_') as tmp:
             hash_file = tmp.name
         
         # Verify file permissions are secure (0600)
         os.chmod(hash_file, 0o600)
+        log_debug('HcxPcapngTool', f'Created temporary hash file: {hash_file} (permissions: 0600)')
 
         try:
             command = [
@@ -207,14 +213,21 @@ class HcxPcapngTool(Dependency):
                 handshake_obj.capfile # Assuming handshake_obj has a capfile attribute
             ]
 
+            log_debug('HcxPcapngTool', f'Running hcxpcapngtool: {" ".join(command)}')
             if show_command:
                 Color.pl('{+} {D}Running: {W}{P}%s{W}' % ' '.join(command))
 
             process = Process(command)
             stdout, stderr = process.get_output()
+            
+            log_debug('HcxPcapngTool', f'hcxpcapngtool stdout: {stdout[:200]}...' if len(stdout) > 200 else f'hcxpcapngtool stdout: {stdout}')
+            if stderr:
+                log_debug('HcxPcapngTool', f'hcxpcapngtool stderr: {stderr[:200]}...' if len(stderr) > 200 else f'hcxpcapngtool stderr: {stderr}')
+            
             if not os.path.exists(hash_file) or os.path.getsize(hash_file) == 0:
                 # Check if this is due to missing frames (common with airodump captures)
                 if 'no hashes written' in stdout.lower() or 'missing frames' in stdout.lower():
+                    log_warning('HcxPcapngTool', 'Hash generation failed: capture quality issue (missing frames)')
                     Color.pl('{!} {O}Warning: hcxpcapngtool could not extract hash (capture quality issue){W}')
                     Color.pl('{!} {O}The capture file is missing required frames or metadata{W}')
                     Color.pl('{!} {O}This is common with airodump-ng captures - consider using hcxdumptool instead{W}')
@@ -222,6 +235,7 @@ class HcxPcapngTool(Dependency):
                     if os.path.exists(hash_file):
                         try:
                             os.remove(hash_file)
+                            log_debug('HcxPcapngTool', 'Cleaned up empty hash file')
                         except OSError:
                             pass
                     # Return None to signal fallback to aircrack-ng should be used
@@ -230,6 +244,8 @@ class HcxPcapngTool(Dependency):
                 # For other errors, provide detailed error message
                 error_msg = f'Failed to generate {"SAE hash" if is_wpa3_sae else "WPA/WPA2 hash"} file.'
                 error_msg += f'\nOutput from hcxpcapngtool:\nSTDOUT: {stdout}\nSTDERR: {stderr}'
+                log_error('HcxPcapngTool', f'Hash generation failed: {error_msg}')
+                
                 # Also include tshark check for WPA3
                 if is_wpa3_sae:
                     from .tshark import Tshark
@@ -238,19 +254,28 @@ class HcxPcapngTool(Dependency):
                     tshark_stdout, _ = tshark_process.get_output()
                     if not tshark_stdout:
                         error_msg += '\nAdditionally, tshark found no authentication frames in the capture file. Ensure it is a valid WPA3-SAE handshake.'
+                        log_debug('HcxPcapngTool', 'tshark found no authentication frames in capture')
                     else:
-                        error_msg += f'\nTshark found {len(tshark_stdout.strip().split(chr(10)))} authentication frames in the capture.'
+                        frame_count = len(tshark_stdout.strip().split(chr(10)))
+                        error_msg += f'\nTshark found {frame_count} authentication frames in the capture.'
+                        log_debug('HcxPcapngTool', f'tshark found {frame_count} authentication frames')
 
                 raise ValueError(error_msg)
+            
+            file_size = os.path.getsize(hash_file)
+            log_info('HcxPcapngTool', f'Hash file generated successfully: {hash_file} ({file_size} bytes)')
             return hash_file
-        except Exception:
+        except Exception as e:
             # Cleanup hash file on any error
+            log_error('HcxPcapngTool', f'Exception during hash generation: {str(e)}', e)
             if hash_file and os.path.exists(hash_file):
                 try:
                     os.remove(hash_file)
+                    log_debug('HcxPcapngTool', 'Cleaned up temporary hash file after error')
                     if Configuration.verbose > 1:
                         Color.pl('{!} {O}Cleaned up temporary hash file after error{W}')
-                except OSError:
+                except OSError as cleanup_err:
+                    log_debug('HcxPcapngTool', f'Failed to cleanup hash file: {str(cleanup_err)}')
                     pass
             raise
 
@@ -258,13 +283,17 @@ class HcxPcapngTool(Dependency):
     def generate_john_file(handshake, show_command=False):
         import tempfile
         
+        log_info('HcxPcapngTool', f'Generating John the Ripper file from capture: {handshake.capfile}')
+        
         # Create secure temporary file with proper permissions (0600)
         # Using NamedTemporaryFile with delete=False to prevent race conditions
+        log_debug('HcxPcapngTool', 'Creating secure temporary john file')
         with tempfile.NamedTemporaryFile(mode='w', suffix='.john', delete=False, prefix='wifite_john_') as tmp:
             john_file = tmp.name
         
         # Verify file permissions are secure (0600)
         os.chmod(john_file, 0o600)
+        log_debug('HcxPcapngTool', f'Created temporary john file: {john_file} (permissions: 0600)')
 
         try:
             command = [
@@ -273,24 +302,36 @@ class HcxPcapngTool(Dependency):
                 handshake.capfile
             ]
 
+            log_debug('HcxPcapngTool', f'Running hcxpcapngtool: {" ".join(command)}')
             if show_command:
                 Color.pl('{+} {D}Running: {W}{P}%s{W}' % ' '.join(command))
 
             process = Process(command)
             stdout, stderr = process.get_output()
+            
+            log_debug('HcxPcapngTool', f'hcxpcapngtool stdout: {stdout[:200]}...' if len(stdout) > 200 else f'hcxpcapngtool stdout: {stdout}')
+            if stderr:
+                log_debug('HcxPcapngTool', f'hcxpcapngtool stderr: {stderr[:200]}...' if len(stderr) > 200 else f'hcxpcapngtool stderr: {stderr}')
+            
             if not os.path.exists(john_file):
-                raise ValueError('Failed to generate .john file, output: \n%s\n%s' % (
-                    stdout, stderr))
+                error_msg = 'Failed to generate .john file, output: \n%s\n%s' % (stdout, stderr)
+                log_error('HcxPcapngTool', error_msg)
+                raise ValueError(error_msg)
 
+            file_size = os.path.getsize(john_file)
+            log_info('HcxPcapngTool', f'John file generated successfully: {john_file} ({file_size} bytes)')
             return john_file
-        except Exception:
+        except Exception as e:
             # Cleanup john file on any error
+            log_error('HcxPcapngTool', f'Exception during john file generation: {str(e)}', e)
             if john_file and os.path.exists(john_file):
                 try:
                     os.remove(john_file)
+                    log_debug('HcxPcapngTool', 'Cleaned up temporary john file after error')
                     if Configuration.verbose > 1:
                         Color.pl('{!} {O}Cleaned up temporary john file after error{W}')
-                except OSError:
+                except OSError as cleanup_err:
+                    log_debug('HcxPcapngTool', f'Failed to cleanup john file: {str(cleanup_err)}')
                     pass
             raise
 
@@ -336,16 +377,21 @@ class HcxPcapngTool(Dependency):
         """
         import tempfile
         
+        log_info('HcxPcapngTool', f'Extracting all PMKIDs from capture: {pcapng_file}')
+        
         # Create secure temporary file with proper permissions (0600)
         # Using NamedTemporaryFile with delete=False to prevent race conditions
+        log_debug('HcxPcapngTool', 'Creating secure temporary PMKID hash file')
         with tempfile.NamedTemporaryFile(mode='w', suffix='.22000', delete=False, prefix='wifite_pmkids_') as tmp:
             temp_hash_file = tmp.name
         
         # Verify file permissions are secure (0600)
         os.chmod(temp_hash_file, 0o600)
+        log_debug('HcxPcapngTool', f'Created temporary PMKID hash file: {temp_hash_file} (permissions: 0600)')
 
         # Check if pcapng file exists
         if not os.path.exists(pcapng_file):
+            log_warning('HcxPcapngTool', f'PMKID extraction failed: capture file not found: {pcapng_file}')
             return []
 
         command = [
@@ -354,11 +400,13 @@ class HcxPcapngTool(Dependency):
             pcapng_file
         ]
 
+        log_debug('HcxPcapngTool', f'Running hcxpcapngtool: {" ".join(command)}')
         process = Process(command)
         process.wait()
 
         # If extraction failed or no hashes found, return empty list
         if not os.path.exists(temp_hash_file):
+            log_warning('HcxPcapngTool', 'PMKID extraction failed: no hash file generated')
             return []
 
         pmkids = []
@@ -414,17 +462,23 @@ class HcxPcapngTool(Dependency):
                         'essid': essid,
                         'hash': line
                     })
+                    log_debug('HcxPcapngTool', f'Extracted PMKID for {essid} ({bssid})')
+            
+            log_info('HcxPcapngTool', f'Successfully extracted {len(pmkids)} PMKID(s) from capture')
         except Exception as e:
             # Handle any file reading errors gracefully
+            log_error('HcxPcapngTool', f'Error parsing PMKID hashes: {str(e)}', e)
             Color.pl('{!} {R}Error parsing PMKID hashes: {O}%s{W}' % str(e))
         finally:
             # Clean up temporary file
             if os.path.exists(temp_hash_file):
                 try:
                     os.remove(temp_hash_file)
+                    log_debug('HcxPcapngTool', 'Cleaned up temporary PMKID hash file')
                     if Configuration.verbose > 1:
                         Color.pl('{!} {O}Cleaned up temporary PMKID hash file{W}')
                 except OSError as e:
+                    log_warning('HcxPcapngTool', f'Failed to cleanup PMKID hash file: {str(e)}')
                     if Configuration.verbose > 0:
                         Color.pl('{!} {O}Warning: Could not remove PMKID hash file: %s{W}' % str(e))
 

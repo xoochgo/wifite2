@@ -11,6 +11,7 @@ import subprocess
 from subprocess import Popen, PIPE
 from ..util.color import Color
 from ..config import Configuration
+from ..util.logger import log_debug, log_info, log_warning, log_error
 
 
 class ProcessManager:
@@ -35,12 +36,14 @@ class ProcessManager:
         with self._lock:
             # Check if approaching limit and trigger cleanup
             if len(self._processes) >= self.MAX_PROCESSES:
+                log_warning('ProcessManager', f'Process limit reached ({len(self._processes)}/{self.MAX_PROCESSES}), triggering cleanup')
                 if Configuration.verbose > 0:
                     Color.pl(f'\n{{!}} {{O}}Warning: Process limit reached ({len(self._processes)}/{self.MAX_PROCESSES}), triggering cleanup{{W}}')
 
                 # Identify and remove finished processes
                 finished = {p for p in self._processes if hasattr(p, 'is_running') and not p.is_running()}
                 if finished:
+                    log_info('ProcessManager', f'Removing {len(finished)} finished process(es) from registry')
                     if Configuration.verbose > 1:
                         Color.pl(f'{{+}} {{C}}Removing {len(finished)} finished process(es){{W}}')
                     self._processes -= finished
@@ -48,6 +51,7 @@ class ProcessManager:
                 # Force-kill oldest processes if still over limit
                 if len(self._processes) >= self.MAX_PROCESSES:
                     oldest = list(self._processes)[:10]
+                    log_warning('ProcessManager', f'Force-killing {len(oldest)} oldest process(es) to stay under limit')
                     if Configuration.verbose > 0:
                         Color.pl(f'{{!}} {{O}}Force-killing {len(oldest)} oldest process(es){{W}}')
                     for p in oldest:
@@ -58,23 +62,33 @@ class ProcessManager:
                     self._processes -= set(oldest)
 
             self._processes.add(process)
+            log_debug('ProcessManager', f'Registered process (total: {len(self._processes)}/{self.MAX_PROCESSES})')
             if not self._registered_cleanup:
                 atexit.register(self.cleanup_all)
                 self._registered_cleanup = True
+                log_debug('ProcessManager', 'Registered atexit cleanup handler')
 
     def unregister_process(self, process):
         with self._lock:
             self._processes.discard(process)
+            log_debug('ProcessManager', f'Unregistered process (remaining: {len(self._processes)})')
 
     def cleanup_all(self):
         with self._lock:
+            process_count = len(self._processes)
+            if process_count > 0:
+                log_info('ProcessManager', f'Cleaning up {process_count} registered process(es)')
             for process in list(self._processes):
                 try:
                     if process.pid and process.pid.poll() is None:
+                        log_debug('ProcessManager', f'Force-killing process during cleanup')
                         process.force_kill()
-                except Exception:
+                except Exception as e:
+                    log_debug('ProcessManager', f'Error during process cleanup: {str(e)}')
                     pass
             self._processes.clear()
+            if process_count > 0:
+                log_info('ProcessManager', 'Process cleanup complete')
 
 
 class Process(object):
@@ -136,11 +150,15 @@ class Process(object):
         self._manager = ProcessManager()
         self._devnull_handles = []
 
+        cmd_str = " ".join(command) if isinstance(command, list) else str(command)
+        log_debug('Process', f'Creating process: {cmd_str}')
+        
         if Configuration.verbose > 1:
             Color.pe(f'\n {{C}}[?] {{W}} Executing: {{B}}{" ".join(command)}{{W}}')
 
         # Check file descriptor limit before creating process
         if Process.check_fd_limit():
+            log_warning('Process', 'Delaying process creation due to high FD usage')
             if Configuration.verbose > 0:
                 Color.pl('{!} {O}Delaying process creation due to high FD usage{W}')
             time.sleep(0.5)  # Brief delay to allow cleanup to complete
@@ -148,6 +166,7 @@ class Process(object):
         self.out = None
         self.err = None
         if devnull:
+            log_debug('Process', 'Opening devnull handles for stdout/stderr redirection')
             sout = Process.devnull()
             serr = Process.devnull()
             self._devnull_handles.extend([sout, serr])
@@ -159,15 +178,19 @@ class Process(object):
 
         try:
             self.pid = Popen(command, stdout=sout, stderr=serr, stdin=stdin, cwd=cwd, bufsize=bufsize)
+            log_info('Process', f'Process created successfully (PID: {self.pid.pid})')
         except OSError as e:
             if e.errno == 24:  # Too many open files
+                log_error('Process', f'Too many open files (errno 24), triggering emergency cleanup', e)
                 if Configuration.verbose > 0:
                     Color.pl('{!} {O}Too many open files, triggering emergency cleanup{W}')
                 ProcessManager().cleanup_all()
                 Process.cleanup_zombies()
                 time.sleep(0.1)
                 self.pid = Popen(command, stdout=sout, stderr=serr, stdin=stdin, cwd=cwd, bufsize=bufsize)
+                log_info('Process', f'Process created after emergency cleanup (PID: {self.pid.pid})')
             else:
+                log_error('Process', f'Failed to create process: {str(e)}', e)
                 raise
 
         self._manager.register_process(self)
@@ -267,33 +290,52 @@ class Process(object):
         if getattr(self, '_cleaned_up', False):
             return
 
+        log_debug('Process', 'Starting process cleanup')
+        
         try:
             if hasattr(self, 'pid') and self.pid and self.pid.poll() is None:
+                log_debug('Process', 'Interrupting running process during cleanup')
                 self.interrupt()
-        except Exception:
+        except Exception as e:
+            log_debug('Process', f'Error interrupting process: {str(e)}')
             pass
 
         # Ensure all descriptors closed
+        streams_closed = 0
         for stream in (getattr(self.pid, 'stdin', None), getattr(self.pid, 'stdout', None), getattr(self.pid, 'stderr', None)):
             if stream and not stream.closed:
                 try:
                     stream.close()
-                except Exception:
+                    streams_closed += 1
+                except Exception as e:
+                    log_debug('Process', f'Error closing stream: {str(e)}')
                     pass
+        
+        if streams_closed > 0:
+            log_debug('Process', f'Closed {streams_closed} stream(s)')
 
+        # Close devnull handles
+        devnull_closed = 0
         for fh in getattr(self, '_devnull_handles', []):
             try:
                 fh.close()
-            except Exception:
+                devnull_closed += 1
+            except Exception as e:
+                log_debug('Process', f'Error closing devnull handle: {str(e)}')
                 pass
         self._devnull_handles = []
+        
+        if devnull_closed > 0:
+            log_debug('Process', f'Closed {devnull_closed} devnull handle(s)')
 
         try:
             self._manager.unregister_process(self)
-        except Exception:
+        except Exception as e:
+            log_debug('Process', f'Error unregistering process: {str(e)}')
             pass
 
         self._cleaned_up = True
+        log_debug('Process', 'Process cleanup complete')
 
     def interrupt(self, wait_time=2.0):
         if not hasattr(self, 'pid') or not self.pid:
@@ -385,23 +427,32 @@ class Process(object):
             soft, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
             current = Process.get_open_fd_count()
 
-            if current > 0 and current > (soft * 0.8):
-                if Configuration.verbose > 0:
-                    Color.pl(f'\n{{!}} {{O}}Warning: High file descriptor usage ({current}/{soft}, {int(current/soft*100)}%){{W}}')
+            if current > 0:
+                usage_percent = int(current/soft*100)
+                log_debug('Process', f'FD usage: {current}/{soft} ({usage_percent}%)')
+                
+                if current > (soft * 0.8):
+                    log_warning('Process', f'High file descriptor usage: {current}/{soft} ({usage_percent}%)')
+                    if Configuration.verbose > 0:
+                        Color.pl(f'\n{{!}} {{O}}Warning: High file descriptor usage ({current}/{soft}, {usage_percent}%){{W}}')
 
-                # Trigger cleanup
-                if Configuration.verbose > 1:
-                    Color.pl('{+} {C}Triggering automatic cleanup...{W}')
-                ProcessManager().cleanup_all()
-                Process.cleanup_zombies()
+                    # Trigger cleanup
+                    log_info('Process', 'Triggering automatic cleanup due to high FD usage')
+                    if Configuration.verbose > 1:
+                        Color.pl('{+} {C}Triggering automatic cleanup...{W}')
+                    ProcessManager().cleanup_all()
+                    Process.cleanup_zombies()
 
-                # Check again after cleanup
-                new_count = Process.get_open_fd_count()
-                if Configuration.verbose > 1:
-                    Color.pl(f'{{+}} {{C}}FD count after cleanup: {new_count}/{soft}{{W}}')
+                    # Check again after cleanup
+                    new_count = Process.get_open_fd_count()
+                    freed = current - new_count
+                    log_info('Process', f'FD cleanup complete: freed {freed} descriptors (now {new_count}/{soft})')
+                    if Configuration.verbose > 1:
+                        Color.pl(f'{{+}} {{C}}FD count after cleanup: {new_count}/{soft}{{W}}')
 
-                return True
-        except Exception:
+                    return True
+        except Exception as e:
+            log_debug('Process', f'Error checking FD limit: {str(e)}')
             pass
         return False
 

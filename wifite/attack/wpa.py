@@ -865,13 +865,30 @@ class AttackWPA(Attack):
                 # Check if hcxdumptool is still running
                 if not hcxdump.is_running():
                     from ..util.logger import log_error, log_info
-                    log_error('AttackWPA', 'hcxdumptool process died unexpectedly during capture')
+                    
+                    # Capture error output to help diagnose the issue
+                    error_output = ''
+                    try:
+                        if hcxdump.proc:
+                            stdout, stderr = hcxdump.proc.get_output()
+                            if stderr:
+                                error_output = stderr.strip()
+                            elif stdout:
+                                error_output = stdout.strip()
+                    except Exception:
+                        pass
+                    
+                    log_error('AttackWPA', f'hcxdumptool process died unexpectedly during capture. Error: {error_output if error_output else "No error output captured"}')
                     log_info('AttackWPA', 'Falling back to airodump-ng capture method')
                     
                     Color.pl('\n{!} {R}hcxdumptool process died unexpectedly{W}')
+                    if error_output:
+                        Color.pl('{!} {O}Error: {R}%s{W}' % error_output[:200])
                     Color.pl('{!} {O}Falling back to airodump-ng mode{W}')
                     if self.view:
                         self.view.add_log('hcxdumptool process died - falling back to airodump-ng')
+                        if error_output:
+                            self.view.add_log(f'Error: {error_output[:100]}')
                     
                     # Fall back to airodump-ng capture
                     return self._capture_handshake_dual_airodump()
@@ -1051,11 +1068,36 @@ class AttackWPA(Attack):
                 
                 # Check if hcxdumptool is still running
                 if not hcxdump.is_running():
-                    log_error('AttackWPA', 'hcxdumptool process died unexpectedly during capture')
+                    # Capture error output to help diagnose the issue
+                    error_output = ''
+                    try:
+                        if hcxdump.proc:
+                            stdout, stderr = hcxdump.proc.get_output()
+                            if stderr:
+                                error_output = stderr.strip()
+                            elif stdout:
+                                error_output = stdout.strip()
+                    except Exception:
+                        pass
+                    
+                    log_error('AttackWPA', f'hcxdumptool process died unexpectedly during capture. Error: {error_output if error_output else "No error output captured"}')
                     Color.pl('\n{!} {R}hcxdumptool process died unexpectedly{W}')
-                    Color.pl('{!} {O}Check interface and permissions{W}')
+                    
+                    if error_output:
+                        # Display the actual error to help user diagnose
+                        Color.pl('{!} {O}Error output: {R}%s{W}' % error_output[:200])
+                        log_error('AttackWPA', f'Full hcxdumptool error: {error_output}')
+                    
+                    Color.pl('{!} {O}Common causes:{W}')
+                    Color.pl('{!} {O}  - Interface not in monitor mode{W}')
+                    Color.pl('{!} {O}  - Insufficient permissions (try with sudo){W}')
+                    Color.pl('{!} {O}  - Interface busy or in use by another process{W}')
+                    Color.pl('{!} {O}  - Driver incompatibility{W}')
+                    
                     if self.view:
                         self.view.add_log('hcxdumptool process died unexpectedly')
+                        if error_output:
+                            self.view.add_log(f'Error: {error_output[:100]}')
                     return None
                 
                 # Check if capture file has data

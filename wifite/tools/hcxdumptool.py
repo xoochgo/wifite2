@@ -85,44 +85,37 @@ class HcxDumpTool(Dependency):
         - Supports multiple interfaces for simultaneous monitoring
         """
         # Build the command
+        # Note: hcxdumptool 7.x has simplified significantly
+        # --rcascan is for scanning/assessment only (no capture)
+        # -w is for capture mode (no scanning)
+        # These options are mutually exclusive
         command = [
             'hcxdumptool',
-            '-o', self.output_file,
-            '--enable_status=15'  # Enable all status messages
+            '-w', self.output_file,  # Changed from -o to -w for hcxdumptool 7.x compatibility
+            '--rds=1'  # Enable real-time display: 1 = show APs on current channel, show CLIENTs
         ]
 
-        # Add all interfaces with -i flag
-        # hcxdumptool supports multiple -i flags for multi-interface capture
-        for iface in self.interfaces:
-            command.extend(['-i', iface])
+        # Add interface (hcxdumptool 7.x uses single -i, not multiple)
+        # Use the first interface from the list
+        command.extend(['-i', self.interfaces[0]])
 
-        # Add channel if specified
+        # Add channel if specified (must include band suffix for v7.x: 1a, 6a, 11a, etc.)
         if self.channel:
-            command.extend(['-c', str(self.channel)])
+            # Add band suffix 'a' for 2.4GHz (most common)
+            channel_str = str(self.channel)
+            if not channel_str[-1].isalpha():
+                channel_str += 'a'  # Default to 2.4GHz band
+            command.extend(['-c', channel_str])
 
-        # Add BSSID filter if specified (efficient hardware-level filtering)
-        if self.target_bssid:
-            # hcxdumptool expects BSSID without colons
-            bssid_clean = self.target_bssid.replace(':', '')
-            command.extend(['--filterlist_ap', bssid_clean])
-            command.extend(['--filtermode', '2'])  # Mode 2: use as whitelist
+        # Note: hcxdumptool 7.x removed --filterlist_ap option
+        # BSSID filtering must be done post-capture with hcxpcapngtool
+        # or using BPF filters (complex, skipping for now)
+        # The tool will capture all traffic on the channel
 
-        # Configure deauth behavior
-        if self.enable_deauth:
-            # Enable active attacks (deauth)
-            command.append('--active_beacon')
-        else:
-            # Passive mode only (for PMF-required networks)
-            command.append('--passive_beacon')
-
-        # Optimize capture by filtering for relevant frame types only
-        # This reduces CPU usage and memory consumption
-        # SAE uses authentication frames (type 0x0b), so we focus on those
-        # Also capture EAPOL frames for WPA2 handshakes in downgrade scenarios
-        command.extend([
-            '--rcascan',  # Disable unnecessary scanning
-            '--disable_deauthentication_broadcast'  # Reduce broadcast traffic
-        ])
+        # Enable ACK for active monitor mode support (if available)
+        # This allows the interface to ACK incoming frames
+        if self.enable_deauth and not self.pmf_required:
+            command.append('-A')  # ACK incoming frames (requires active monitor mode support)
 
         # Start the process
         self.proc = Process(command, devnull=False)

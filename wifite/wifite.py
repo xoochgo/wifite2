@@ -195,8 +195,27 @@ class Wifite(object):
             if assignment:
                 log_info('Wifite', f'Interface assignment: {assignment.get_assignment_summary()}')
                 self.interface_assignment = assignment
+                
+                # Validate the assignment
+                is_valid, error_msg, warnings = self.validate_interface_assignment()
+                
+                # Display validation results
+                self.display_validation_results(is_valid, error_msg, warnings)
+                
+                if not is_valid:
+                    log_error('Wifite', f'Interface assignment validation failed: {error_msg}')
+                    log_info('Wifite', 'Falling back to single interface mode due to validation failure')
+                    self.fallback_to_single_interface()
+                    return None
+                
+                if warnings:
+                    log_warning('Wifite', f'Interface assignment has {len(warnings)} warning(s)')
+                    for warning in warnings:
+                        log_warning('Wifite', f'  - {warning}')
+                
                 # Display interface assignment to user
                 self.display_interface_assignment()
+                log_info('Wifite', f'Interface assignment validated successfully for {attack_type} attack')
             else:
                 log_warning('Wifite', f'Could not assign interfaces for {attack_type} attack')
                 # Attempt fallback to single interface mode
@@ -239,6 +258,9 @@ class Wifite(object):
             # Check if interface supports monitor mode
             if not InterfaceManager.check_monitor_mode_support(iface_name):
                 Color.pl('{!} {O}Interface {R}%s{O} does not support monitor mode{W}' % iface_name)
+                Color.pl('{!} {O}  Capabilities: %s{W}' % iface_info.get_capability_summary())
+                Color.pl('{!} {O}  Driver: %s, Chipset: %s{W}' % (iface_info.driver, iface_info.chipset))
+                Color.pl('{!} {O}  Suggestion: Use a different wireless adapter or check driver support{W}')
                 continue
             
             # In verbose mode, actually test monitor mode
@@ -246,6 +268,8 @@ class Wifite(object):
                 Color.pl('{+} {C}Testing monitor mode on {G}%s{W}...' % iface_name)
                 if not InterfaceManager.test_monitor_mode(iface_name):
                     Color.pl('{!} {R}Monitor mode test failed on {O}%s{W}' % iface_name)
+                    Color.pl('{!} {O}  Driver: %s, Chipset: %s{W}' % (iface_info.driver, iface_info.chipset))
+                    Color.pl('{!} {O}  Suggestion: Check if driver is properly installed or try updating firmware{W}')
                     continue
                 Color.pl('{+} {G}Monitor mode test passed on {G}%s{W}' % iface_name)
             
@@ -257,6 +281,8 @@ class Wifite(object):
         if len(valid_interfaces) < 2:
             Color.pl('{!} {R}Not enough monitor-capable interfaces for dual interface mode{W}')
             Color.pl('{!} {O}Need 2 interfaces, found %d{W}' % len(valid_interfaces))
+            Color.pl('{!} {O}Suggestion: Connect another wireless adapter or disable dual interface mode{W}')
+            Color.pl('{!} {O}  To disable: Use --no-dual-interface flag{W}')
             return False
         
         Color.pl('{+} {G}Found %d monitor-capable interface(s) for dual interface mode{W}' % len(valid_interfaces))
@@ -446,12 +472,13 @@ class Wifite(object):
         # If no assignment, validate single interface mode
         if not self.interface_assignment:
             if not Configuration.interface:
-                return False, 'No interface configured', []
+                return False, 'No interface configured. Please specify an interface with -i/--interface', []
             
             # Check if interface exists
             interface_info = self._get_interface_info_by_name(Configuration.interface)
             if not interface_info:
-                return False, f'Interface {Configuration.interface} not found', []
+                available = ', '.join([iface.name for iface in self.available_interfaces])
+                return False, f'Interface {Configuration.interface} not found. Available interfaces: {available}', []
             
             return True, None, warnings
         
@@ -461,13 +488,15 @@ class Wifite(object):
         # Check that primary interface exists
         primary_info = self._get_interface_info_by_name(assignment.primary)
         if not primary_info:
-            return False, f'Primary interface {assignment.primary} not found', warnings
+            available = ', '.join([iface.name for iface in self.available_interfaces])
+            return False, f'Primary interface {assignment.primary} not found. Available interfaces: {available}', warnings
         
         # Check that secondary interface exists (if specified)
         if assignment.secondary:
             secondary_info = self._get_interface_info_by_name(assignment.secondary)
             if not secondary_info:
-                return False, f'Secondary interface {assignment.secondary} not found', warnings
+                available = ', '.join([iface.name for iface in self.available_interfaces])
+                return False, f'Secondary interface {assignment.secondary} not found. Available interfaces: {available}', warnings
             
             # Validate dual interface setup
             is_valid, error_msg = InterfaceAssignmentStrategy.validate_dual_interface_setup(
@@ -489,38 +518,48 @@ class Wifite(object):
         if attack_type == 'evil_twin':
             # Primary should support AP mode
             if not primary_info.supports_ap_mode:
-                warning = f'Primary interface {assignment.primary} may not support AP mode. Evil Twin attack may fail.'
+                warning = (f'Primary interface {assignment.primary} may not support AP mode. '
+                          f'Evil Twin attack may fail. '
+                          f'Suggestion: Use an interface with AP mode support or try single interface mode.')
                 warnings.append(warning)
                 log_warning('Wifite', warning)
             
             # Secondary should support monitor mode (if present)
             if assignment.secondary and secondary_info:
                 if not secondary_info.supports_monitor_mode:
-                    warning = f'Secondary interface {assignment.secondary} may not support monitor mode.'
+                    warning = (f'Secondary interface {assignment.secondary} may not support monitor mode. '
+                              f'Suggestion: Use an interface with monitor mode support.')
                     warnings.append(warning)
                     log_warning('Wifite', warning)
         
         elif attack_type == 'wpa':
             # Both interfaces should support monitor mode
             if not primary_info.supports_monitor_mode:
-                warning = f'Primary interface {assignment.primary} may not support monitor mode. WPA attack may fail.'
+                warning = (f'Primary interface {assignment.primary} may not support monitor mode. '
+                          f'WPA attack may fail. '
+                          f'Suggestion: Use an interface with monitor mode support.')
                 warnings.append(warning)
                 log_warning('Wifite', warning)
             
             if assignment.secondary and secondary_info:
                 if not secondary_info.supports_monitor_mode:
-                    warning = f'Secondary interface {assignment.secondary} may not support monitor mode.'
+                    warning = (f'Secondary interface {assignment.secondary} may not support monitor mode. '
+                              f'Suggestion: Use an interface with monitor mode support.')
                     warnings.append(warning)
                     log_warning('Wifite', warning)
         
         # Check injection support
         if not primary_info.supports_injection:
-            warning = f'Primary interface {assignment.primary} may not support packet injection.'
+            warning = (f'Primary interface {assignment.primary} may not support packet injection. '
+                      f'Attacks requiring deauthentication may fail. '
+                      f'Suggestion: Use an interface with packet injection support.')
             warnings.append(warning)
             log_warning('Wifite', warning)
         
         if assignment.secondary and secondary_info and not secondary_info.supports_injection:
-            warning = f'Secondary interface {assignment.secondary} may not support packet injection.'
+            warning = (f'Secondary interface {assignment.secondary} may not support packet injection. '
+                      f'Deauthentication attacks may fail. '
+                      f'Suggestion: Use an interface with packet injection support.')
             warnings.append(warning)
             log_warning('Wifite', warning)
         

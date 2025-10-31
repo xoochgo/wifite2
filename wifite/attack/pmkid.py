@@ -10,6 +10,7 @@ from ..util.output import OutputManager
 from ..model.pmkid_result import CrackResultPMKID
 from ..tools.airodump import Airodump
 from ..util.wpasec_uploader import WpaSecUploader
+from ..util.logger import log_debug, log_info, log_warning, log_error
 from threading import Thread, active_count
 import os
 import time
@@ -45,20 +46,26 @@ class AttackPMKID(Attack):
         Returns None if no PMKID hash file exists for the given BSSID.
         """
         if not os.path.exists(Configuration.wpa_handshake_dir):
+            log_debug('AttackPMKID', f'Handshake directory does not exist: {Configuration.wpa_handshake_dir}')
             return None
 
         bssid = bssid.lower().replace(':', '')
+        log_info('AttackPMKID', f'Searching for existing PMKID file for BSSID: {bssid}')
 
         if Configuration.verbose > 1:
             Color.pl('{+} {D}Looking for existing PMKID for BSSID: {C}%s{W}' % bssid)
 
         # Use glob pattern for better file matching
         pmkid_pattern = os.path.join(Configuration.wpa_handshake_dir, 'pmkid_*.22000')
-        for pmkid_filename in glob.glob(pmkid_pattern):
+        files_found = glob.glob(pmkid_pattern)
+        log_debug('AttackPMKID', f'Found {len(files_found)} PMKID file(s) to check')
+        
+        for pmkid_filename in files_found:
             if not os.path.isfile(pmkid_filename):
                 continue
 
             try:
+                log_debug('AttackPMKID', f'Checking file: {os.path.basename(pmkid_filename)}')
                 with open(pmkid_filename, 'r') as pmkid_handle:
                     pmkid_hash = pmkid_handle.read().strip()
 
@@ -67,6 +74,7 @@ class AttackPMKID(Attack):
 
                     # Validate hash format before parsing
                     if not pmkid_hash or not pmkid_hash.startswith('WPA*'):
+                        log_debug('AttackPMKID', f'SKIP: Invalid hash format in {os.path.basename(pmkid_filename)}')
                         if Configuration.verbose > 2:
                             Color.pl('{+} {D}SKIP: Invalid hash format in {C}%s{W}' % os.path.basename(pmkid_filename))
                         continue
@@ -74,6 +82,7 @@ class AttackPMKID(Attack):
                     # Split hash and validate sufficient fields
                     hash_fields = pmkid_hash.split('*')
                     if len(hash_fields) < 4:
+                        log_debug('AttackPMKID', f'SKIP: Insufficient fields in {os.path.basename(pmkid_filename)} (got {len(hash_fields)}, need 4+)')
                         if Configuration.verbose > 2:
                             Color.pl('{+} {D}SKIP: Insufficient fields in {C}%s{W} (got %d, need 4+)' % (os.path.basename(pmkid_filename), len(hash_fields)))
                         continue
@@ -83,23 +92,28 @@ class AttackPMKID(Attack):
 
                     # Validate extracted BSSID format
                     if len(existing_bssid) != 12 or not all(c in '0123456789abcdef' for c in existing_bssid):
+                        log_debug('AttackPMKID', f'SKIP: Invalid BSSID format in {os.path.basename(pmkid_filename)}: {existing_bssid}')
                         if Configuration.verbose > 2:
                             Color.pl('{+} {D}SKIP: Invalid BSSID format in {C}%s{W}: {C}%s{W}' % (os.path.basename(pmkid_filename), existing_bssid))
                         continue
 
+                    log_debug('AttackPMKID', f'Comparing BSSID: {existing_bssid} vs target: {bssid}')
                     if Configuration.verbose > 2:
                         Color.pl('{+} {D}Extracted BSSID: {C}%s{W} vs target: {C}%s{W}' % (existing_bssid, bssid))
 
                     if existing_bssid == bssid:
+                        log_info('AttackPMKID', f'Found matching PMKID file: {os.path.basename(pmkid_filename)}')
                         if Configuration.verbose > 1:
                             Color.pl('{+} {G}Found matching PMKID file: {C}%s{W}' % os.path.basename(pmkid_filename))
                         return pmkid_filename
 
             except (IOError, OSError) as e:
+                log_warning('AttackPMKID', f'Error reading {os.path.basename(pmkid_filename)}: {str(e)}')
                 if Configuration.verbose > 2:
                     Color.pl('{+} {R}ERROR reading {C}%s{W}: %s' % (os.path.basename(pmkid_filename), str(e)))
                 continue
 
+        log_info('AttackPMKID', f'No existing PMKID found for BSSID: {bssid}')
         if Configuration.verbose > 1:
             Color.pl('{+} {D}No existing PMKID found for BSSID: {C}%s{W}' % bssid)
         return None
@@ -346,12 +360,14 @@ class AttackPMKID(Attack):
         Returns:
             The PMKID hash (str) if found, otherwise None.
         """
+        log_info('AttackPMKID', f'Starting PMKID capture for {self.target.essid} ({self.target.bssid})')
         self.keep_capturing = True
         self.timer = Timer(Configuration.pmkid_timeout)
 
         # Check file descriptor usage and thread count before starting
         from ..util.process import Process
         if Process.check_fd_limit() or active_count() > 20:  # Limit concurrent threads
+            log_warning('AttackPMKID', f'Delaying PMKID attack due to high resource usage (threads: {active_count()})')
             Color.pl('{!} {O}Delaying PMKID attack due to high resource usage{W}')
             time.sleep(2)  # Brief delay to allow cleanup
 
@@ -361,6 +377,7 @@ class AttackPMKID(Attack):
             self.view.set_capture_tool("hcxdumptool")
 
         # Start hcxdumptool
+        log_debug('AttackPMKID', 'Starting hcxdumptool thread')
         t = Thread(target=self.dumptool_thread)
         t.start()
 
@@ -368,10 +385,13 @@ class AttackPMKID(Attack):
         pmkid_hash = None
         pcaptool = HcxPcapngTool(self.target)
         attempts = 0
+        log_debug('AttackPMKID', f'Starting PMKID capture loop (timeout: {Configuration.pmkid_timeout}s)')
         while self.timer.remaining() > 0:
             attempts += 1
+            log_debug('AttackPMKID', f'PMKID capture attempt {attempts}')
             pmkid_hash = pcaptool.get_pmkid_hash(self.pcapng_file)
             if pmkid_hash is not None:
+                log_info('AttackPMKID', f'PMKID captured successfully after {attempts} attempt(s)')
                 break  # Got PMKID
 
             # Update TUI view
@@ -386,6 +406,7 @@ class AttackPMKID(Attack):
         self.keep_capturing = False
 
         if pmkid_hash is None:
+            log_warning('AttackPMKID', f'PMKID capture failed: timeout after {attempts} attempt(s)')
             if self.view:
                 self.view.update_pmkid_status(False, attempts)
                 self.view.add_log("Failed to capture PMKID - timeout reached")
@@ -394,6 +415,7 @@ class AttackPMKID(Attack):
             return None  # No hash found.
 
         # Success!
+        log_info('AttackPMKID', 'PMKID capture successful, saving to file')
         if self.view:
             self.view.update_pmkid_status(True, attempts)
             self.view.add_log("Successfully captured PMKID!")
@@ -409,9 +431,12 @@ class AttackPMKID(Attack):
         Returns:
             True if cracked, False otherwise.
         """
+        log_info('AttackPMKID', f'Starting PMKID crack for {self.target.essid} ({self.target.bssid})')
+        log_debug('AttackPMKID', f'PMKID file: {pmkid_file}')
 
         # Check that wordlist exists before cracking.
         if Configuration.wordlist is None:
+            log_warning('AttackPMKID', 'PMKID crack skipped: no wordlist specified')
             if self.view:
                 self.view.add_log("No wordlist specified - skipping crack")
             Color.pl('\n{!} {O}Not cracking PMKID because there is no {R}wordlist{O} (re-run with {C}--dict{O})')
@@ -420,6 +445,7 @@ class AttackPMKID(Attack):
 
             key = None
         else:
+            log_info('AttackPMKID', f'Using wordlist: {Configuration.wordlist}')
             if self.view:
                 self.view.set_attack_type("PMKID Crack")
                 self.view.add_log(f"Starting PMKID crack with wordlist: {Configuration.wordlist}")
@@ -430,9 +456,11 @@ class AttackPMKID(Attack):
             key = Hashcat.crack_pmkid(pmkid_file)
 
         if key is not None:
+            log_info('AttackPMKID', f'PMKID cracked successfully! Password: {key}')
             return self._extracted_from_crack_pmkid_file_31(key, pmkid_file)
         # Failed to crack.
         if Configuration.wordlist is not None:
+            log_warning('AttackPMKID', 'PMKID crack failed: passphrase not found in wordlist')
             if self.view:
                 self.view.add_log("Failed to crack PMKID - passphrase not in wordlist")
             Color.clear_entire_line()
