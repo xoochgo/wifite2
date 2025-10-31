@@ -65,7 +65,12 @@ class Handshake(object):
         if not self.bssid or not self.essid:
             self.divine_bssid_and_essid()
 
-        return len(self.tshark_handshakes()) > 0
+        # Check if ANY validator detects a handshake
+        # Tshark is strict (requires all 4 messages), but cowpatty/aircrack
+        # can work with just messages 2&3, which is sufficient for cracking
+        return (len(self.tshark_handshakes()) > 0 or
+                len(self.cowpatty_handshakes()) > 0 or
+                len(self.aircrack_handshakes()) > 0)
 
     def tshark_handshakes(self):
         """Returns list[tuple] of BSSID & ESSID pairs (ESSIDs are always `None`)."""
