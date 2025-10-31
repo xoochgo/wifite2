@@ -65,6 +65,7 @@ class Handshake(object):
         if not self.bssid or not self.essid:
             self.divine_bssid_and_essid()
 
+        #return len(self.tshark_handshakes()) > 0
         # Check if ANY validator detects a handshake
         # Tshark is strict (requires all 4 messages), but cowpatty/aircrack
         # can work with just messages 2&3, which is sufficient for cracking
