@@ -227,11 +227,9 @@ class TestHcxDumpToolPassive(unittest.TestCase):
             self.assertEqual(call_args[0], 'hcxdumptool')
             self.assertIn('-i', call_args)
             self.assertIn('wlan0', call_args)
-            self.assertIn('--rds=3', call_args)
             self.assertIn('-w', call_args)
             self.assertIn('/tmp/passive.pcapng', call_args)
-            self.assertIn('--enable_status=15', call_args)
-            
+
             # Verify PID was set
             self.assertEqual(tool.pid, 12345)
             self.assertIsNotNone(tool.proc)

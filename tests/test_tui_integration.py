@@ -15,7 +15,7 @@ class MockTarget:
     """Mock Target object for testing."""
     
     def __init__(self, essid="TestNetwork", bssid="AA:BB:CC:DD:EE:FF", 
-                 channel=6, power=-50, encryption="WPA2", wps=0, clients=None):
+                 channel=6, power=-50, encryption="WPA2", wps=0, clients=None, is_wpa3=False):
         self.essid = essid
         self.essid_known = True
         self.bssid = bssid
@@ -25,6 +25,7 @@ class MockTarget:
         self.wps = wps
         self.clients = clients or []
         self.decloaked = False
+        self.is_wpa3 = is_wpa3
 
 
 class MockTUIController:
