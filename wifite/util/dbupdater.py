@@ -1,8 +1,7 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 import os
 import sys
 import csv
-import requests
 from datetime import datetime
 from typing import List
 
