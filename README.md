@@ -68,7 +68,7 @@ Supported Operating Systems
 * **Other Linux distributions** - Requires latest versions of all dependencies
 
 ### Requirements for All Platforms
-* **Python 3.8+** (Python 3.11+ recommended)
+* **Python 3.9+** (Python 3.11+ recommended)
 * **Wireless adapter with monitor mode support**
 * **Root/sudo access** for network interface manipulation
 * **Latest versions of required tools** (see Required Tools section)
