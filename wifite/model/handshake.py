@@ -100,8 +100,12 @@ class Handshake(object):
             command.append('-2')
         command.extend([
             '-r', self.capfile,
-            '-c'  # Check for handshake
+            '-c'  # Check for handshake (requires ESSID)
         ])
+        
+        # Add ESSID if available (required for -c option)
+        if self.essid:
+            command.append(self.essid)
 
         proc = Process(command, devnull=False)
         return next(

@@ -51,7 +51,7 @@ class Reaver(Attack, Dependency):
             'reaver',
             '--interface', Configuration.interface,
             '--bssid', self.target.bssid,
-            '--channel', self.target.channel,
+            '--channel', str(self.target.channel),
             '-vv',
             '-N',
         ]
@@ -86,15 +86,21 @@ class Reaver(Attack, Dependency):
         except Exception as e:
             # Unexpected errors
             self.pattack('{R}Failed:{O} Unexpected error: %s' % str(e), newline=True)
-            return self.crack_result is not None
+        finally:
+            # Always clean up resources, even on exception
+            # Stop reaver if it's still running
+            if self.reaver_proc and self.reaver_proc.poll() is None:
+                try:
+                    self.reaver_proc.interrupt()
+                except Exception:
+                    pass  # Ignore errors during cleanup
 
-        # Stop reaver if it's still running
-        if self.reaver_proc.poll() is None:
-            self.reaver_proc.interrupt()
-
-        # Clean up open file handle
-        if self.output_write:
-            self.output_write.close()
+            # Clean up open file handle
+            if self.output_write:
+                try:
+                    self.output_write.close()
+                except Exception:
+                    pass  # Ignore errors during cleanup
 
         return self.crack_result is not None
 

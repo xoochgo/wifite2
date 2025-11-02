@@ -60,9 +60,10 @@ class Bully(Attack, Dependency):
         self.cmd.extend([
             'bully',
             '--bssid', self.target.bssid,
-            '--channel', self.target.channel,
+            '--channel', str(self.target.channel),
             '--force',
             '-v', '4',
+            '--nofcs',
             Configuration.interface
         ])
 
@@ -463,7 +464,7 @@ class Bully(Attack, Dependency):
         """
         cmd = [
             'bully',
-            '--channel', target3.channel,
+            '--channel', str(target3.channel),
             '--bssid', target3.bssid,
             '--pin', pin,
             '--bruteforce',

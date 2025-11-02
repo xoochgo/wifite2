@@ -337,6 +337,9 @@ class AttackMonitor:
             timestamp_str = time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(event['timestamp']))
 
             # Format log entry as CSV
+            # Convert channel to string if it's an integer
+            channel_str = str(event.get('channel', '')) if event.get('channel') is not None else ''
+            
             log_entry = '%s,%s,%s,%s,%s,%s,%s\n' % (
                 timestamp_str,
                 event['type'],
@@ -344,7 +347,7 @@ class AttackMonitor:
                 event['dest_mac'],
                 event['bssid'],
                 event.get('essid', ''),
-                event.get('channel', '')
+                channel_str
             )
 
             # Add to buffer
@@ -543,6 +546,9 @@ class AttackMonitor:
                     self.tui_view.add_log(traceback.format_exc())
                 else:
                     Color.pl('{!} {R}%s{W}' % traceback.format_exc())
+            
+            # Ensure cleanup happens even on exception
+            self.cleanup()
             return False
         finally:
             # Stop TUI view if it was started

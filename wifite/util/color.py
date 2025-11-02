@@ -92,8 +92,10 @@ class Color(object):
         e.g.: Router2G (23db) WEP replay attack: 102 IVs
         """
         essid = '{C}%s{W}' % target.essid if target.essid_known else '{O}unknown{W}'
+        # Convert power to string to avoid type errors in string formatting
+        power_str = str(target.power) if target.power is not None else '??'
         Color.p('\r{+} {G}%s{W} ({C}%sdb{W}) {G}%s {C}%s{W}: %s ' % (
-            essid, target.power, attack_type, attack_name, progress))
+            essid, power_str, attack_type, attack_name, progress))
 
     @staticmethod
     def pexception(exception):

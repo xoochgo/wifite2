@@ -20,6 +20,67 @@ from ..util.sae_crack import SAECracker
 
 # TODO: Bring back the 'print' option, for easy copy/pasting. Just one-liners people can paste into terminal.
 
+def decode_hex_essid_if_needed(essid):
+    """
+    Decode hex-encoded ESSID with strict validation to prevent false positives.
+    
+    Only decodes if ALL of the following criteria are met:
+    1. Length >= 16 characters (minimum for 8-char ESSID encoded as hex)
+    2. Length is even (valid hex pairs)
+    3. All characters are valid hexadecimal digits
+    4. Decoded result is shorter than original (hex encoding expands length)
+    5. Decoded result contains only printable characters (ASCII 32-126 or UTF-8 >= 128)
+    
+    This prevents false positives for legitimate network names like "CAFE", "DEAD", "BEEF", etc.
+    
+    Args:
+        essid: ESSID string to potentially decode
+        
+    Returns:
+        Decoded ESSID if valid hex-encoded, otherwise original ESSID
+    """
+    # Validation check 1: Minimum length (too short to be hex-encoded)
+    if len(essid) < 16:
+        return essid
+    
+    # Validation check 2: Even length (valid hex pairs)
+    if len(essid) % 2 != 0:
+        return essid
+    
+    # Validation check 3: All characters are hex digits
+    if not all(c in '0123456789ABCDEFabcdef' for c in essid):
+        return essid
+    
+    try:
+        # Try to decode from hex with strict error handling
+        decoded_essid = bytes.fromhex(essid).decode('utf-8', errors='strict')
+        
+        # Validation check 4: Decoded result must not be empty
+        if not decoded_essid or len(decoded_essid) == 0:
+            return essid
+        
+        # Validation check 5: Hex encoding should make string longer, not shorter
+        if len(decoded_essid) >= len(essid):
+            return essid
+        
+        # Validation check 6: Check for printable characters (ASCII 32-126 or extended UTF-8)
+        if not all(32 <= ord(c) <= 126 or ord(c) >= 128 for c in decoded_essid):
+            return essid
+        
+        # All checks passed, use decoded version
+        if Configuration.verbose > 1:
+            Color.pl('{+} {C}Decoded hex ESSID: {O}%s{W} -> {G}%s{W}' % (essid, decoded_essid))
+        
+        return decoded_essid
+        
+    except (ValueError, UnicodeDecodeError) as e:
+        # Decoding failed, keep original
+        # This is expected for legitimate network names like "CAFE", "DEAD", etc.
+        if Configuration.verbose > 2:
+            Color.pl('{!} {O}Hex ESSID decode failed for %s: %s{W}' % (essid, str(e)))
+        return essid
+
+
 class CrackHelper:
     """Manages handshake retrieval, selection, and running the cracking commands."""
 
@@ -197,30 +258,8 @@ class CrackHelper:
                 essid = essid if essid_discovery is None else essid_discovery
             elif hs_type == 'PMKID':
                 # Decode hex-encoded ESSID from passive PMKID capture
-                # Only decode if it looks like hex-encoded UTF-8 (not just valid hex)
-                # Criteria:
-                # 1. Length >= 16 (minimum for 8-char ESSID encoded as hex)
-                # 2. Even length (valid hex pairs)
-                # 3. All characters are hex digits
-                # 4. Decoded result is shorter than original (hex encoding expands)
-                # 5. Decoded result contains only printable characters
-                if (len(essid) >= 16 and 
-                    len(essid) % 2 == 0 and 
-                    all(c in '0123456789ABCDEFabcdef' for c in essid)):
-                    try:
-                        # Try to decode from hex (strict mode)
-                        decoded_essid = bytes.fromhex(essid).decode('utf-8', errors='strict')
-                        
-                        # Validate decoded result
-                        if (decoded_essid and 
-                            len(decoded_essid) > 0 and
-                            len(decoded_essid) < len(essid) and  # Hex encoding should be longer
-                            all(32 <= ord(c) <= 126 or ord(c) >= 128 for c in decoded_essid)):  # Printable chars
-                            essid = decoded_essid
-                    except (ValueError, UnicodeDecodeError):
-                        # If decoding fails, keep the original hex string
-                        # This is expected for legitimate network names like "CAFE", "DEAD", etc.
-                        pass
+                # Use dedicated function with strict validation to prevent false positives
+                essid = decode_hex_essid_if_needed(essid)
             
             handshake = {
                 'filename': os.path.join(hs_dir, hs_file),

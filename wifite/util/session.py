@@ -323,12 +323,28 @@ class SessionManager:
     
     def save_session(self, session: SessionState) -> None:
         """
-        Persist session state to disk.
+        Persist session state to disk with atomic file operations.
+        
+        This method implements atomic session saving to prevent corruption:
+        1. Creates unique temporary file with secure permissions (0600)
+        2. Writes session data to temporary file
+        3. Atomically renames temp file to final location
+        4. Cleans up on error
+        
+        The atomic rename ensures that:
+        - Multiple instances never corrupt each other's session files
+        - Session files are never partially written
+        - No race conditions occur during concurrent saves
         
         Args:
             session: SessionState to save
+            
+        Raises:
+            IOError: If save operation fails (with detailed error message)
         """
         import tempfile
+        from ..config import Configuration
+        from ..util.color import Color
         
         session.updated_at = time.time()
         session_path = self._get_session_path(session.session_id)
@@ -341,6 +357,7 @@ class SessionManager:
         try:
             # Create secure temporary file in same directory as target
             # This ensures atomic rename works (same filesystem)
+            # Prefix with session ID for uniqueness across multiple instances
             temp_fd, temp_path = tempfile.mkstemp(
                 suffix='.tmp',
                 prefix=f'.{session.session_id}_',
@@ -348,16 +365,21 @@ class SessionManager:
             )
             
             # Write session data using file descriptor
+            # fdopen takes ownership of the file descriptor
             with os.fdopen(temp_fd, 'w') as f:
-                temp_fd = None  # fdopen takes ownership
+                temp_fd = None  # Prevent double-close
                 json.dump(session.to_dict(), f, indent=2)
             
             # Permissions already secure (0600 by default from mkstemp)
-            # Atomic rename to final location
+            # Atomic rename to final location (replaces existing file atomically)
             os.rename(temp_path, session_path)
-            temp_path = None  # Successfully renamed
+            temp_path = None  # Successfully renamed, prevent cleanup
             
-        except Exception:
+            # Log successful save in verbose mode
+            if Configuration.verbose > 1:
+                Color.pl('{+} {G}Session saved: %s{W}' % session.session_id)
+            
+        except Exception as e:
             # Clean up temp file on error
             if temp_fd is not None:
                 try:
@@ -371,7 +393,8 @@ class SessionManager:
                 except OSError:
                     pass
             
-            raise  # Re-raise the original exception
+            # Re-raise with detailed context
+            raise IOError(f'Failed to save session {session.session_id}: {str(e)}') from e
     
     def load_session(self, session_id: str = None) -> SessionState:
         """
