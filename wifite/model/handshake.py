@@ -66,14 +66,18 @@ class Handshake(object):
             self.divine_bssid_and_essid()
 
         #return len(self.tshark_handshakes()) > 0
-        # Check if ANY validator detects a handshake
-        # Tshark is strict (requires all 4 messages), but cowpatty/aircrack
-        # can work with just messages 2&3, which is sufficient for cracking
-        # hcxpcapngtool is best for hcxdumptool captures (pcapng format)
-        return (len(self.tshark_handshakes()) > 0 or
-                len(self.cowpatty_handshakes()) > 0 or
-                len(self.aircrack_handshakes()) > 0 or
-                len(self.hcxpcapngtool_handshakes()) > 0)
+        # Prefer strict validators. Do NOT accept aircrack alone as proof.
+        # Tshark requires the full 4-way (strict) — keep it.
+        if len(self.tshark_handshakes()) > 0:
+            return True
+
+        # cowpatty can be reliable for 2&3 captures
+        if len(self.cowpatty_handshakes()) > 0:
+            return True
+
+        # Do NOT treat aircrack-only as valid (aircrack is informative but not definitive)
+        return False
+
 
     def tshark_handshakes(self):
         """Returns list[tuple] of BSSID & ESSID pairs (ESSIDs are always `None`)."""
