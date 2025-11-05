@@ -60,7 +60,6 @@ class Handshake(object):
                     Color.pl('\n{+} Discovered essid "{C}%s{W}"' % essid)
                     self.essid = essid
                     break
-
     def has_handshake(self):
         if not self.bssid or not self.essid:
             self.divine_bssid_and_essid()
@@ -72,12 +71,7 @@ class Handshake(object):
             return True
 
         # cowpatty can be reliable for 2&3 captures
-        if len(self.cowpatty_handshakes()) > 0:
-            return True
-
-        # Do NOT treat aircrack-only as valid (aircrack is informative but not definitive)
-        return False
-
+        return len(self.cowpatty_handshakes()) > 0
 
     def tshark_handshakes(self):
         """Returns list[tuple] of BSSID & ESSID pairs (ESSIDs are always `None`)."""
