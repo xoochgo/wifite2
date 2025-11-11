@@ -1,6 +1,12 @@
-chardet==5.2.0
-pytest
+# Core dependencies for wifite2
+# These should match pyproject.toml [project.dependencies]
+
+chardet>=5.2.0
 requests>=2.31.0
 rich>=13.0.0
-scapy==2.6.1
+scapy>=2.6.1; python_version < '4'
 setuptools>=78.1.1
+
+# Development dependencies (optional)
+# For development, install with: pip install -e ".[dev]"
+# Or install from pyproject.toml: pip install pytest>=8.0.0 pytest-cov>=4.1.0
